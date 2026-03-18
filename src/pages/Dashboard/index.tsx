@@ -13,6 +13,10 @@ import {
   SafetyCertificateOutlined,
   ToolOutlined,
   LoadingOutlined,
+  RobotOutlined,
+  BulbOutlined,
+  ArrowUpOutlined,
+  ArrowDownOutlined,
 } from '@ant-design/icons'
 import ReactECharts from 'echarts-for-react'
 import { workConditionTypes, assignWellStatus, generateWellParams } from '../../mock/wellData'
@@ -212,6 +216,88 @@ const Dashboard: React.FC = () => {
     }
   }, [filteredWells])
 
+  const aiSummary = useMemo(() => {
+    const alarmWells = wells.filter(w => w.status === 'alarm')
+    const warningWells = wells.filter(w => w.status === 'warning')
+    const lowEffWells = wells.filter(w => w.status !== 'offline' && w.efficiency < 30)
+    const highEffWells = wells.filter(w => w.status !== 'offline' && w.efficiency > 50)
+
+    const alarmTypes: Record<string, number> = {}
+    alarmWells.forEach(w => {
+      const name = workConditionTypes.find(wc => wc.code === w.workConditionCode)?.name || w.workConditionCode
+      alarmTypes[name] = (alarmTypes[name] || 0) + 1
+    })
+    const topAlarmType = Object.entries(alarmTypes).sort((a, b) => b[1] - a[1])[0]
+
+    const warningTypes: Record<string, number> = {}
+    warningWells.forEach(w => {
+      const name = workConditionTypes.find(wc => wc.code === w.workConditionCode)?.name || w.workConditionCode
+      warningTypes[name] = (warningTypes[name] || 0) + 1
+    })
+    const topWarningType = Object.entries(warningTypes).sort((a, b) => b[1] - a[1])[0]
+
+    const normalRate = stats.total > 0 ? Math.round(stats.normal / stats.total * 100) : 0
+    const riskLevel = stats.alarm > stats.total * 0.25 ? 'high' : stats.alarm > stats.total * 0.1 ? 'medium' : 'low'
+    const riskText = riskLevel === 'high' ? '较高' : riskLevel === 'medium' ? '中等' : '较低'
+    const riskColor = riskLevel === 'high' ? '#ff4d4f' : riskLevel === 'medium' ? '#fa8c16' : '#52c41a'
+
+    const insights: { icon: React.ReactNode; text: string; type: 'danger' | 'warning' | 'success' | 'info' }[] = []
+
+    insights.push({
+      icon: <SafetyCertificateOutlined />,
+      text: `系统整体运行风险等级：${riskText}。正常运行率 ${normalRate}%（${stats.normal}/${stats.total}口），平均泵效 ${stats.avgEfficiency}%。`,
+      type: riskLevel === 'high' ? 'danger' : riskLevel === 'medium' ? 'warning' : 'success',
+    })
+
+    if (stats.alarm > 0) {
+      insights.push({
+        icon: <CloseCircleOutlined />,
+        text: `当前有 ${stats.alarm} 口井处于报警状态，需立即处理。${topAlarmType ? `主要报警类型为"${topAlarmType[0]}"（${topAlarmType[1]}口），` : ''}建议优先安排作业队现场处置。`,
+        type: 'danger',
+      })
+    }
+
+    if (stats.warning > 0) {
+      insights.push({
+        icon: <WarningOutlined />,
+        text: `${stats.warning} 口井处于预警状态。${topWarningType ? `最突出的预警类型为"${topWarningType[0]}"（${topWarningType[1]}口），` : ''}建议密切监测并制定预防性维护计划。`,
+        type: 'warning',
+      })
+    }
+
+    if (lowEffWells.length > 0) {
+      insights.push({
+        icon: <ArrowDownOutlined />,
+        text: `${lowEffWells.length} 口井泵效低于30%，存在能耗偏高风险。建议对低效井进行参数优化或检泵作业，预计可提升整体泵效 3~5 个百分点。`,
+        type: 'warning',
+      })
+    }
+
+    if (highEffWells.length > 0) {
+      insights.push({
+        icon: <ArrowUpOutlined />,
+        text: `${highEffWells.length} 口井泵效超过50%，运行状态优良。可作为同区块其他井的参数优化参考标杆。`,
+        type: 'success',
+      })
+    }
+
+    if (stats.offline > 0) {
+      insights.push({
+        icon: <DisconnectOutlined />,
+        text: `${stats.offline} 口井处于离线状态，建议排查通讯线路及地面控制系统，尽快恢复数据采集。`,
+        type: 'info',
+      })
+    }
+
+    insights.push({
+      icon: <BulbOutlined />,
+      text: `综合建议：日产液量 ${stats.totalLiquid.toLocaleString()} t/d，日产油量 ${stats.totalOil.toLocaleString()} t/d。建议重点关注报警井的工单处理进度，同时对预警井实施预防性降频或间歇抽油措施，避免工况恶化。`,
+      type: 'info',
+    })
+
+    return { insights, riskColor, riskText }
+  }, [wells, stats])
+
   // 加载状态
   if (loading) {
     return (
@@ -331,6 +417,49 @@ const Dashboard: React.FC = () => {
           </Card>
         </Col>
       </Row>
+
+      {/* AI 诊断摘要 */}
+      <Card
+        style={{ marginTop: 16, borderRadius: 8 }}
+        bodyStyle={{ padding: '16px 20px' }}
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{
+              width: 32, height: 32, borderRadius: 8,
+              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <RobotOutlined style={{ color: '#fff', fontSize: 16 }} />
+            </div>
+            <span style={{ fontSize: 15, fontWeight: 600 }}>AI 诊断摘要</span>
+            <Tag color="purple" style={{ marginLeft: 4, fontSize: 11 }}>智能分析</Tag>
+            <span style={{ fontSize: 11, color: '#999', marginLeft: 'auto' }}>
+              更新时间：{new Date().toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
+            </span>
+          </div>
+        }
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {aiSummary.insights.map((item, idx) => {
+            const bgMap = { danger: '#fff1f0', warning: '#fffbe6', success: '#f6ffed', info: '#e6f4ff' }
+            const borderMap = { danger: '#ffccc7', warning: '#ffe58f', success: '#b7eb8f', info: '#91caff' }
+            const colorMap = { danger: '#cf1322', warning: '#ad6800', success: '#389e0d', info: '#0958d9' }
+            return (
+              <div
+                key={idx}
+                style={{
+                  display: 'flex', alignItems: 'flex-start', gap: 10,
+                  padding: '10px 14px', borderRadius: 6,
+                  background: bgMap[item.type], border: `1px solid ${borderMap[item.type]}`,
+                }}
+              >
+                <span style={{ color: colorMap[item.type], fontSize: 16, marginTop: 1, flexShrink: 0 }}>{item.icon}</span>
+                <span style={{ fontSize: 13, color: '#333', lineHeight: 1.7 }}>{item.text}</span>
+              </div>
+            )
+          })}
+        </div>
+      </Card>
 
       {/* 工况详情弹窗 */}
       <Modal

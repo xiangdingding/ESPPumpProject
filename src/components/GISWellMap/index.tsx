@@ -375,16 +375,26 @@ const GISWellMap: React.FC<GISWellMapProps> = ({ wells, height = 420, middleSlot
   }, [filteredWells, layout])
 
   const tableData = useMemo(() => {
-    return [...filteredWells]
-      .sort((a, b) => (statusPriority[a.status] ?? 9) - (statusPriority[b.status] ?? 9))
-      .map(w => ({
-        ...w,
-        diagnosisType: diagnosisTypeMap[w.workConditionCode] || '运行正常',
-        description: descriptionMap[w.workConditionCode] || '运行正常',
-        diagnosisBasis: diagnosisBasisMap[w.workConditionCode] || '综合参数正常',
-        treatment: treatmentMap[w.workConditionCode] || '维持当前参数',
-        alarmDate: (w.status === 'alarm' || w.status === 'warning' || w.status === 'offline') ? mockAlarmDate(w.id) : '',
-      }))
+    const toRecord = (w: WellInfo): TableRecord => ({
+      ...w,
+      diagnosisType: diagnosisTypeMap[w.workConditionCode] || '运行正常',
+      description: descriptionMap[w.workConditionCode] || '运行正常',
+      diagnosisBasis: diagnosisBasisMap[w.workConditionCode] || '综合参数正常',
+      treatment: treatmentMap[w.workConditionCode] || '维持当前参数',
+      alarmDate: w.status === 'normal' ? mockAlarmDate(w.id).replace(/^\d{4}-\d{2}-/, '2026-03-') : mockAlarmDate(w.id),
+    })
+    const abnormal = filteredWells.filter(w => w.status === 'alarm' || w.status === 'warning')
+    const normal = filteredWells.filter(w => w.status === 'normal')
+    const offline = filteredWells.filter(w => w.status === 'offline')
+    abnormal.sort((a, b) => (statusPriority[a.status] ?? 9) - (statusPriority[b.status] ?? 9))
+
+    const normalToShow = Math.min(normal.length, Math.max(5, Math.ceil(abnormal.length * 0.6)))
+    const offlineToShow = Math.min(offline.length, 3)
+    return [
+      ...abnormal.map(toRecord),
+      ...offline.slice(0, offlineToShow).map(toRecord),
+      ...normal.slice(0, normalToShow).map(toRecord),
+    ]
   }, [filteredWells])
 
   // ========== 工单操作（API-backed with fallback） ==========
@@ -603,6 +613,9 @@ const GISWellMap: React.FC<GISWellMapProps> = ({ wells, height = 420, middleSlot
     {
       title: '操作', key: 'action', width: 120, fixed: 'right' as const,
       render: (_: unknown, r: TableRecord) => {
+        if (r.status === 'normal' || r.status === 'offline') {
+          return <span style={{ color: '#bfbfbf', fontSize: 12 }}>-</span>
+        }
         const wo = getWO(r.id)
         if (wo) {
           const p = toWOPhase(wo.status)
@@ -660,7 +673,7 @@ const GISWellMap: React.FC<GISWellMapProps> = ({ wells, height = 420, middleSlot
 
       {middleSlot}
 
-      <Card title={`最近诊断记录 (${filteredWells.length} 口)`} bodyStyle={{ padding: 0 }}>
+      <Card title={`最近诊断记录 (${tableData.length} 条)`} bodyStyle={{ padding: 0 }}>
         <Table columns={columns} dataSource={tableData} rowKey="id" size="small" pagination={false} scroll={{ x: 1400, y: 400 }} />
       </Card>
 
