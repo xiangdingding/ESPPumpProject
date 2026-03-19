@@ -1,53 +1,91 @@
-import React, { useState, useMemo, useCallback } from 'react'
+import React, { useState, useMemo, useEffect, useCallback } from 'react'
 import {
-  Row, Col, Card, Statistic, Table, Tag, Badge, Select, DatePicker, Button, Space,
-  Timeline, Modal, Descriptions, Tooltip, message,
+  Card, Tag, Badge, Select, DatePicker, Button, Space, Table, Statistic,
+  Timeline, Modal, Descriptions, Input, Empty, message, Tabs,
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import {
   SearchOutlined, ExportOutlined, CheckCircleOutlined, WarningOutlined,
-  CloseCircleOutlined, FieldTimeOutlined, FundProjectionScreenOutlined,
-  ClusterOutlined,
+  CloseCircleOutlined, ClusterOutlined,
 } from '@ant-design/icons'
 import ReactECharts from 'echarts-for-react'
 import dayjs from 'dayjs'
 import type { Dayjs } from 'dayjs'
-import {
-  wellList, diagnosisRecords, workConditionTypes,
-} from '../../mock/wellData'
-import type { DiagnosisRecord } from '../../mock/wellData'
+import { assignWellStatus, generateWellParams } from '../../mock/wellData'
+import type { WellInfo, DiagnosisRecord } from '../../mock/wellData'
+import type { DbWell } from '../../mock/wellDbData'
+import { useOrgContext } from '../../contexts/OrgContext'
 
 const { RangePicker } = DatePicker
 
-const statusMap: Record<string, { text: string; color: string; badge: 'success' | 'warning' | 'error' }> = {
-  normal: { text: '正常', color: '#52c41a', badge: 'success' },
-  warning: { text: '预警', color: '#faad14', badge: 'warning' },
-  alarm: { text: '报警', color: '#ff4d4f', badge: 'error' },
+const statusColorMap: Record<string, 'success' | 'warning' | 'error' | 'default'> = {
+  normal: 'success', warning: 'warning', alarm: 'error', offline: 'default',
+}
+const statusTextMap: Record<string, string> = {
+  normal: '正常运行', warning: '预警', alarm: '报警', offline: '离线',
+}
+const diagnosisTypeMap: Record<string, string> = {
+  C01: '气体影响', C02: '气锁', C03: '稠油及乳化', C04: '叶轮磨损',
+  C05: '供液不足', C06: '运行正常', C07: '泵内堵塞', C08: '泵入口堵',
+  C09: '泵反转', C10: '出砂', C11: '轴断', C12: '管柱漏失',
+}
+const badgeMap: Record<string, 'success' | 'warning' | 'error'> = {
+  normal: 'success', warning: 'warning', alarm: 'error',
+}
+const diagMethods = ['综合诊断', '多参数综合', '电参数+多参数', '参数诊断', '振动分析', '电参数诊断']
+const faultTypes = ['运行正常', '供液不足', '气体影响', '泵效过低', '电机过热', '振动异常', '气锁', '管柱漏失', '泵反转', '出砂']
+
+function convertDbWell(dbWell: DbWell): WellInfo {
+  const wellId = String(dbWell.Well_Id || '')
+  const { workConditionCode, status } = assignWellStatus(wellId)
+  const params = generateWellParams(wellId, status, workConditionCode)
+  return {
+    id: wellId, name: String(dbWell.Well_Name || ''), oilField: String(dbWell.Oil_Field || ''),
+    block: String(dbWell.Block_Name || ''), lng: 0, lat: 0, workConditionCode, status,
+    depth: Number(dbWell.Well_Depth || 0), pumpDepth: Number(dbWell.Pump_Depth || 0),
+    casingPressure: status === 'offline' ? 0 : Math.round((2 + Math.random() * 3) * 10) / 10,
+    tubingPressure: status === 'offline' ? 0 : Math.round((1 + Math.random() * 2) * 10) / 10,
+    dailyLiquid: params.dailyLiquid, dailyOil: params.dailyOil, waterCut: params.waterCut,
+    frequency: params.frequency, current: params.current, voltage: params.voltage,
+    power: params.power, temperature: params.temperature, vibration: params.vibration,
+    efficiency: params.efficiency,
+    runDays: status === 'offline' ? 0 : Math.round(50 + Math.random() * 800),
+    lastMaintenance: '2025-06-15', submergence: params.submergence,
+    gasOilRatio: params.gasOilRatio, dynamicLevel: params.dynamicLevel,
+    pumpModel: String(dbWell.Pump_Model || 'TD500-200'), motorPower: Number(dbWell.Motor_Power || 45),
+    stages: 200, cableSpec: '3×16mm²', separatorType: '旋转气体分离器', pumpType: 'ESP',
+  }
 }
 
-const diagnosisMethodList = ['综合诊断', '多参数综合', '电参数+多参数', '参数诊断', '振动分析', '电参数诊断']
+function seededRand(seed: number) {
+  const x = Math.sin(seed) * 10000
+  return x - Math.floor(x)
+}
 
-// 生成近30天模拟诊断数据
-const generateLast30DaysRecords = (): DiagnosisRecord[] => {
+function genHistoryRecords(wells: Map<string, WellInfo>, days: number): DiagnosisRecord[] {
   const records: DiagnosisRecord[] = []
-  const types = ['运行正常', '供液不足', '泵效过低', '电机过热', '振动异常', '气锁预警', '泵漏失', '结蜡']
-  const statusWeights: Array<DiagnosisRecord['status']> = [
-    'normal', 'normal', 'normal', 'normal', 'normal',
-    'warning', 'warning', 'warning',
-    'alarm',
-  ]
-  const methods = diagnosisMethodList
-  const wells = wellList.filter(w => w.status !== 'offline')
+  const wellArr = Array.from(wells.values()).filter(w => w.status !== 'offline')
+  if (wellArr.length === 0) return records
 
-  for (let d = 29; d >= 0; d--) {
+  for (let d = days - 1; d >= 0; d--) {
     const date = dayjs().subtract(d, 'day')
-    const dailyCount = 3 + Math.floor(Math.random() * 6)
-    for (let i = 0; i < dailyCount; i++) {
-      const well = wells[Math.floor(Math.random() * wells.length)]
-      const status = statusWeights[Math.floor(Math.random() * statusWeights.length)]
-      const type = status === 'normal' ? '运行正常' : types[1 + Math.floor(Math.random() * (types.length - 1))]
-      const hour = Math.floor(Math.random() * 24)
-      const minute = Math.floor(Math.random() * 60)
+    const count = 2 + Math.floor(seededRand(d * 17) * 5)
+    for (let i = 0; i < count; i++) {
+      const well = wellArr[Math.floor(seededRand(d * 100 + i * 7) * wellArr.length)]
+      const seed = d * 1000 + i
+      const r = seededRand(seed)
+      let status: 'normal' | 'warning' | 'alarm'
+      if (well.status === 'alarm') {
+        status = r < 0.2 ? 'normal' : r < 0.5 ? 'warning' : 'alarm'
+      } else if (well.status === 'warning') {
+        status = r < 0.4 ? 'normal' : r < 0.8 ? 'warning' : 'alarm'
+      } else {
+        status = r < 0.8 ? 'normal' : r < 0.95 ? 'warning' : 'alarm'
+      }
+      const type = status === 'normal' ? '运行正常' : faultTypes[1 + Math.floor(seededRand(seed + 3) * (faultTypes.length - 1))]
+      const hour = Math.floor(seededRand(seed + 5) * 24)
+      const minute = Math.floor(seededRand(seed + 7) * 60)
+      const method = diagMethods[Math.floor(seededRand(seed + 11) * diagMethods.length)]
       records.push({
         id: `DH-${d}-${i}`,
         wellId: well.id,
@@ -55,497 +93,376 @@ const generateLast30DaysRecords = (): DiagnosisRecord[] => {
         time: date.hour(hour).minute(minute).format('YYYY-MM-DD HH:mm'),
         type,
         status,
-        description: `${well.name} ${type}诊断记录`,
+        description: status === 'normal'
+          ? `${well.name} 各项参数正常，设备运行稳定`
+          : `${well.name} 检测到${type}，${status === 'alarm' ? '建议立即处理' : '建议持续关注'}`,
         parameters: {
-          efficiency: Math.round((20 + Math.random() * 40) * 10) / 10,
-          current: Math.round((18 + Math.random() * 22) * 10) / 10,
-          temperature: Math.round(65 + Math.random() * 45),
-          vibration: Math.round((1 + Math.random() * 7) * 10) / 10,
+          efficiency: Math.round((20 + seededRand(seed + 13) * 40) * 10) / 10,
+          current: Math.round((well.current + (seededRand(seed + 17) - 0.5) * 10) * 10) / 10,
+          temperature: Math.round(well.temperature + (seededRand(seed + 19) - 0.5) * 20),
+          vibration: Math.round((1 + seededRand(seed + 23) * 7) * 10) / 10,
         },
-        diagnosisMethod: methods[Math.floor(Math.random() * methods.length)],
+        diagnosisMethod: method,
       })
     }
   }
-
-  return [...records, ...diagnosisRecords].sort((a, b) =>
-    dayjs(b.time).valueOf() - dayjs(a.time).valueOf()
-  )
+  return records.sort((a, b) => dayjs(b.time).valueOf() - dayjs(a.time).valueOf())
 }
 
-const allRecords = generateLast30DaysRecords()
-
 const DiagnosisHistory: React.FC = () => {
-  const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(null)
-  const [selectedWells, setSelectedWells] = useState<string[]>([])
-  const [selectedType, setSelectedType] = useState<string | undefined>(undefined)
-  const [selectedStatus, setSelectedStatus] = useState<string | undefined>(undefined)
-  const [selectedMethod, setSelectedMethod] = useState<string | undefined>(undefined)
-  const [selectedWellForTimeline, setSelectedWellForTimeline] = useState<string | undefined>(undefined)
+  const { selectedOrg, filteredDbWells } = useOrgContext()
+  const [selectedWellId, setSelectedWellId] = useState<string | null>(null)
+  const [wellSearch, setWellSearch] = useState('')
+  const [dateRange, setDateRange] = useState<[Dayjs, Dayjs]>([dayjs().subtract(30, 'day'), dayjs()])
+  const [filterStatus, setFilterStatus] = useState<string | undefined>(undefined)
+  const [filterType, setFilterType] = useState<string | undefined>(undefined)
+  const [filterMethod, setFilterMethod] = useState<string | undefined>(undefined)
   const [detailRecord, setDetailRecord] = useState<DiagnosisRecord | null>(null)
   const [detailVisible, setDetailVisible] = useState(false)
+  const [activeTab, setActiveTab] = useState('table')
+
+  const convertedMap = useMemo(() => {
+    const map = new Map<string, WellInfo>()
+    filteredDbWells.forEach(dbw => { const w = convertDbWell(dbw); map.set(w.id, w) })
+    return map
+  }, [filteredDbWells])
+
+  const statusOrder: Record<string, number> = { alarm: 0, warning: 1, normal: 2, offline: 3 }
+  const sortedWells = useMemo(() => {
+    let wells = filteredDbWells
+    if (wellSearch.trim()) {
+      const kw = wellSearch.trim().toLowerCase()
+      wells = wells.filter(w => (w.Well_Name || '').toLowerCase().includes(kw) || (w.Well_Id || '').toLowerCase().includes(kw))
+    }
+    return [...wells].sort((a, b) => {
+      const sa = convertedMap.get(String(a.Well_Id))?.status || 'offline'
+      const sb = convertedMap.get(String(b.Well_Id))?.status || 'offline'
+      return (statusOrder[sa] ?? 9) - (statusOrder[sb] ?? 9)
+    })
+  }, [filteredDbWells, wellSearch, convertedMap])
+
+  const selectedWell = useMemo(() => selectedWellId ? convertedMap.get(selectedWellId) || null : null, [selectedWellId, convertedMap])
+
+  useEffect(() => {
+    setWellSearch('')
+    if (sortedWells.length > 0) setSelectedWellId(String(sortedWells[0].Well_Id))
+    else setSelectedWellId(null)
+  }, [filteredDbWells])
+
+  const allRecords = useMemo(() => genHistoryRecords(convertedMap, 60), [convertedMap])
 
   const filteredRecords = useMemo(() => {
     return allRecords.filter(r => {
-      if (dateRange && dateRange[0] && dateRange[1]) {
-        const t = dayjs(r.time)
-        if (t.isBefore(dateRange[0].startOf('day')) || t.isAfter(dateRange[1].endOf('day'))) return false
-      }
-      if (selectedWells.length > 0 && !selectedWells.includes(r.wellId)) return false
-      if (selectedType && r.type !== selectedType) return false
-      if (selectedStatus && r.status !== selectedStatus) return false
-      if (selectedMethod && r.diagnosisMethod !== selectedMethod) return false
+      if (selectedWellId && r.wellId !== selectedWellId) return false
+      const t = dayjs(r.time)
+      if (t.isBefore(dateRange[0].startOf('day')) || t.isAfter(dateRange[1].endOf('day'))) return false
+      if (filterStatus && r.status !== filterStatus) return false
+      if (filterType && r.type !== filterType) return false
+      if (filterMethod && r.diagnosisMethod !== filterMethod) return false
       return true
     })
-  }, [dateRange, selectedWells, selectedType, selectedStatus, selectedMethod])
+  }, [allRecords, selectedWellId, dateRange, filterStatus, filterType, filterMethod])
 
   const stats = useMemo(() => {
     const total = filteredRecords.length
     const normal = filteredRecords.filter(r => r.status === 'normal').length
     const warning = filteredRecords.filter(r => r.status === 'warning').length
     const alarm = filteredRecords.filter(r => r.status === 'alarm').length
-    const coveredWells = new Set(filteredRecords.map(r => r.wellId)).size
-    return { total, normal, warning, alarm, coveredWells }
+    const wells = new Set(filteredRecords.map(r => r.wellId)).size
+    return { total, normal, warning, alarm, wells }
   }, [filteredRecords])
 
-  // 近30天每天的诊断统计
   const trendOption = useMemo(() => {
-    const days: string[] = []
-    const normalCounts: number[] = []
-    const warningCounts: number[] = []
-    const alarmCounts: number[] = []
-
-    for (let d = 29; d >= 0; d--) {
-      const date = dayjs().subtract(d, 'day')
-      const dateStr = date.format('MM-DD')
-      days.push(dateStr)
-      const dayRecords = filteredRecords.filter(r =>
-        dayjs(r.time).format('YYYY-MM-DD') === date.format('YYYY-MM-DD')
-      )
-      normalCounts.push(dayRecords.filter(r => r.status === 'normal').length)
-      warningCounts.push(dayRecords.filter(r => r.status === 'warning').length)
-      alarmCounts.push(dayRecords.filter(r => r.status === 'alarm').length)
+    const days = dateRange[1].diff(dateRange[0], 'day') + 1
+    const dates: string[] = []
+    const normalC: number[] = []
+    const warningC: number[] = []
+    const alarmC: number[] = []
+    for (let d = 0; d < days; d++) {
+      const date = dateRange[0].add(d, 'day')
+      dates.push(date.format('MM-DD'))
+      const dayRecs = filteredRecords.filter(r => dayjs(r.time).format('YYYY-MM-DD') === date.format('YYYY-MM-DD'))
+      normalC.push(dayRecs.filter(r => r.status === 'normal').length)
+      warningC.push(dayRecs.filter(r => r.status === 'warning').length)
+      alarmC.push(dayRecs.filter(r => r.status === 'alarm').length)
     }
-
     return {
       tooltip: { trigger: 'axis' as const, axisPointer: { type: 'shadow' as const } },
-      legend: { data: ['正常', '预警', '报警'], top: 4, right: 20 },
-      grid: { left: 50, right: 20, top: 40, bottom: 30 },
-      xAxis: { type: 'category' as const, data: days, axisLabel: { rotate: 45, fontSize: 11 } },
-      yAxis: { type: 'value' as const, name: '诊断次数', minInterval: 1 },
+      legend: { data: ['正常', '预警', '报警'], top: 0, right: 10, textStyle: { fontSize: 11 } },
+      grid: { left: 45, right: 15, top: 30, bottom: 30 },
+      xAxis: { type: 'category' as const, data: dates, axisLabel: { rotate: 40, fontSize: 10 } },
+      yAxis: { type: 'value' as const, name: '次数', minInterval: 1, axisLabel: { fontSize: 10 } },
       series: [
-        { name: '正常', type: 'bar' as const, stack: 'total', data: normalCounts, itemStyle: { color: '#52c41a' }, barMaxWidth: 20 },
-        { name: '预警', type: 'bar' as const, stack: 'total', data: warningCounts, itemStyle: { color: '#faad14' }, barMaxWidth: 20 },
-        { name: '报警', type: 'bar' as const, stack: 'total', data: alarmCounts, itemStyle: { color: '#ff4d4f' }, barMaxWidth: 20 },
+        { name: '正常', type: 'bar' as const, stack: 'total', data: normalC, itemStyle: { color: '#52c41a' }, barMaxWidth: 16 },
+        { name: '预警', type: 'bar' as const, stack: 'total', data: warningC, itemStyle: { color: '#faad14' }, barMaxWidth: 16 },
+        { name: '报警', type: 'bar' as const, stack: 'total', data: alarmC, itemStyle: { color: '#ff4d4f' }, barMaxWidth: 16 },
       ],
     }
-  }, [filteredRecords])
+  }, [filteredRecords, dateRange])
 
-  // 工况类型分布饼图
   const typePieOption = useMemo(() => {
     const typeCount: Record<string, number> = {}
-    filteredRecords.forEach(r => {
-      typeCount[r.type] = (typeCount[r.type] || 0) + 1
-    })
-    const data = Object.entries(typeCount)
-      .map(([name, value]) => ({ name, value }))
-      .sort((a, b) => b.value - a.value)
-
-    const colors = ['#1677ff', '#52c41a', '#faad14', '#ff4d4f', '#722ed1', '#13c2c2', '#eb2f96', '#fa8c16']
-
+    filteredRecords.forEach(r => { typeCount[r.type] = (typeCount[r.type] || 0) + 1 })
+    const data = Object.entries(typeCount).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value)
+    const colors = ['#1677ff', '#52c41a', '#faad14', '#ff4d4f', '#722ed1', '#13c2c2', '#eb2f96', '#fa8c16', '#2f54eb', '#a0d911']
     return {
       tooltip: { trigger: 'item' as const, formatter: '{b}: {c}次 ({d}%)' },
-      legend: { orient: 'vertical' as const, right: 10, top: 'center' as const, textStyle: { fontSize: 12 } },
+      legend: { orient: 'vertical' as const, right: 5, top: 'center' as const, textStyle: { fontSize: 11 } },
       series: [{
-        type: 'pie' as const,
-        radius: ['40%', '70%'],
-        center: ['40%', '50%'],
-        avoidLabelOverlap: true,
-        itemStyle: { borderRadius: 6, borderColor: '#fff', borderWidth: 2 },
+        type: 'pie' as const, radius: ['38%', '68%'], center: ['38%', '50%'],
+        itemStyle: { borderRadius: 5, borderColor: '#fff', borderWidth: 2 },
         label: { show: false },
-        emphasis: { label: { show: true, fontSize: 14, fontWeight: 'bold' as const } },
+        emphasis: { label: { show: true, fontSize: 12, fontWeight: 'bold' as const } },
         data: data.map((d, i) => ({ ...d, itemStyle: { color: colors[i % colors.length] } })),
       }],
     }
   }, [filteredRecords])
 
-  // 各井报警次数排名
   const alarmRankOption = useMemo(() => {
-    const wellAlarmCount: Record<string, { name: string; count: number }> = {}
-    filteredRecords
-      .filter(r => r.status === 'alarm' || r.status === 'warning')
-      .forEach(r => {
-        if (!wellAlarmCount[r.wellId]) {
-          wellAlarmCount[r.wellId] = { name: r.wellName, count: 0 }
-        }
-        wellAlarmCount[r.wellId].count++
-      })
-
-    const sorted = Object.values(wellAlarmCount)
-      .sort((a, b) => a.count - b.count)
-      .slice(-10)
-
+    const wellCount: Record<string, { name: string; alarm: number; warning: number }> = {}
+    filteredRecords.filter(r => r.status !== 'normal').forEach(r => {
+      if (!wellCount[r.wellId]) wellCount[r.wellId] = { name: r.wellName, alarm: 0, warning: 0 }
+      if (r.status === 'alarm') wellCount[r.wellId].alarm++
+      else wellCount[r.wellId].warning++
+    })
+    const sorted = Object.values(wellCount).sort((a, b) => (a.alarm + a.warning) - (b.alarm + b.warning)).slice(-8)
     return {
       tooltip: { trigger: 'axis' as const, axisPointer: { type: 'shadow' as const } },
-      grid: { left: 100, right: 30, top: 10, bottom: 20 },
-      xAxis: { type: 'value' as const, minInterval: 1 },
-      yAxis: { type: 'category' as const, data: sorted.map(s => s.name), axisLabel: { fontSize: 12 } },
-      series: [{
-        type: 'bar' as const,
-        data: sorted.map(s => ({
-          value: s.count,
-          itemStyle: {
-            color: s.count >= 10 ? '#ff4d4f' : s.count >= 5 ? '#faad14' : '#1677ff',
-            borderRadius: [0, 4, 4, 0],
-          },
-        })),
-        barMaxWidth: 18,
-        label: { show: true, position: 'right' as const, fontSize: 12 },
-      }],
+      legend: { data: ['报警', '预警'], top: 0, right: 10, textStyle: { fontSize: 11 } },
+      grid: { left: 80, right: 20, top: 28, bottom: 10 },
+      xAxis: { type: 'value' as const, minInterval: 1, axisLabel: { fontSize: 10 } },
+      yAxis: { type: 'category' as const, data: sorted.map(s => s.name), axisLabel: { fontSize: 11 } },
+      series: [
+        { name: '报警', type: 'bar' as const, stack: 'total', data: sorted.map(s => s.alarm), itemStyle: { color: '#ff4d4f', borderRadius: [0, 3, 3, 0] }, barMaxWidth: 14 },
+        { name: '预警', type: 'bar' as const, stack: 'total', data: sorted.map(s => s.warning), itemStyle: { color: '#faad14', borderRadius: [0, 3, 3, 0] }, barMaxWidth: 14 },
+      ],
     }
   }, [filteredRecords])
 
-  // 单井时间线数据
   const timelineData = useMemo(() => {
-    if (!selectedWellForTimeline) return []
-    return filteredRecords
-      .filter(r => r.wellId === selectedWellForTimeline)
-      .slice(0, 20)
-  }, [filteredRecords, selectedWellForTimeline])
+    if (!selectedWellId) return []
+    return allRecords.filter(r => r.wellId === selectedWellId).slice(0, 30)
+  }, [allRecords, selectedWellId])
 
-  const diagnosisTypes = useMemo(() => {
-    const types = new Set(allRecords.map(r => r.type))
-    return Array.from(types)
-  }, [])
-
-  const handleExport = useCallback(() => {
-    message.success('诊断记录导出成功（模拟）')
-  }, [])
-
+  const handleExport = useCallback(() => { message.success('诊断记录导出成功（模拟）') }, [])
   const handleReset = useCallback(() => {
-    setDateRange(null)
-    setSelectedWells([])
-    setSelectedType(undefined)
-    setSelectedStatus(undefined)
-    setSelectedMethod(undefined)
+    setDateRange([dayjs().subtract(30, 'day'), dayjs()])
+    setFilterStatus(undefined)
+    setFilterType(undefined)
+    setFilterMethod(undefined)
   }, [])
 
   const columns: ColumnsType<DiagnosisRecord> = [
-    {
-      title: '时间',
-      dataIndex: 'time',
-      key: 'time',
-      width: 160,
-      sorter: (a, b) => dayjs(a.time).valueOf() - dayjs(b.time).valueOf(),
-      defaultSortOrder: 'descend',
-      render: (t: string) => <span style={{ fontSize: 13, color: '#555' }}>{t}</span>,
+    { title: '时间', dataIndex: 'time', key: 'time', width: 140, sorter: (a, b) => dayjs(a.time).valueOf() - dayjs(b.time).valueOf(), defaultSortOrder: 'descend',
+      render: (t: string) => <span style={{ fontSize: 12, color: '#555' }}>{t}</span>,
     },
-    {
-      title: '井名',
-      dataIndex: 'wellName',
-      key: 'wellName',
-      width: 120,
-      render: (name: string) => <span style={{ fontWeight: 500 }}>{name}</span>,
-    },
-    {
-      title: '诊断类型',
-      dataIndex: 'type',
-      key: 'type',
-      width: 120,
-      filters: diagnosisTypes.map(t => ({ text: t, value: t })),
-      onFilter: (value, record) => record.type === value,
+    { title: '井名', dataIndex: 'wellName', key: 'wellName', width: 100, render: (n: string) => <span style={{ fontWeight: 500 }}>{n}</span> },
+    { title: '诊断类型', dataIndex: 'type', key: 'type', width: 100,
       render: (type: string) => {
-        const colorMap: Record<string, string> = {
-          '运行正常': 'green', '供液不足': 'orange', '泵效过低': 'red',
-          '电机过热': 'volcano', '振动异常': 'purple', '气锁预警': 'magenta',
-          '泵漏失': 'gold', '结蜡': 'cyan',
-        }
-        return <Tag color={colorMap[type] || 'default'}>{type}</Tag>
+        const cm: Record<string, string> = { '运行正常': 'green', '供液不足': 'orange', '气体影响': 'gold', '泵效过低': 'red', '电机过热': 'volcano', '振动异常': 'purple', '气锁': 'magenta', '管柱漏失': 'cyan', '泵反转': 'blue', '出砂': 'lime' }
+        return <Tag color={cm[type] || 'default'} style={{ fontSize: 11 }}>{type}</Tag>
       },
     },
-    {
-      title: '状态',
-      dataIndex: 'status',
-      key: 'status',
-      width: 90,
-      filters: [
-        { text: '正常', value: 'normal' },
-        { text: '预警', value: 'warning' },
-        { text: '报警', value: 'alarm' },
-      ],
-      onFilter: (value, record) => record.status === value,
-      render: (status: DiagnosisRecord['status']) => (
-        <Badge status={statusMap[status].badge} text={statusMap[status].text} />
+    { title: '状态', dataIndex: 'status', key: 'status', width: 80,
+      render: (s: 'normal' | 'warning' | 'alarm') => <Badge status={badgeMap[s]} text={statusTextMap[s] || s} />,
+    },
+    { title: '诊断方法', dataIndex: 'diagnosisMethod', key: 'diagnosisMethod', width: 110, render: (m: string) => <span style={{ color: '#666', fontSize: 12 }}>{m}</span> },
+    { title: '描述', dataIndex: 'description', key: 'description', ellipsis: true },
+    { title: '操作', key: 'action', width: 60, align: 'center' as const,
+      render: (_: unknown, record: DiagnosisRecord) => (
+        <a style={{ fontSize: 12 }} onClick={(e) => { e.stopPropagation(); setDetailRecord(record); setDetailVisible(true) }}>详情</a>
       ),
-    },
-    {
-      title: '诊断方法',
-      dataIndex: 'diagnosisMethod',
-      key: 'diagnosisMethod',
-      width: 130,
-      render: (m: string) => <span style={{ color: '#666' }}>{m || '-'}</span>,
-    },
-    {
-      title: '描述',
-      dataIndex: 'description',
-      key: 'description',
-      ellipsis: true,
-    },
-    {
-      title: '关键参数',
-      key: 'parameters',
-      width: 200,
-      render: (_: unknown, record: DiagnosisRecord) => {
-        const params = record.parameters
-        const entries = Object.entries(params).slice(0, 3)
-        return (
-          <Space size={4} wrap>
-            {entries.map(([k, v]) => (
-              <Tooltip key={k} title={`${k}: ${v}`}>
-                <Tag style={{ fontSize: 11, margin: 0 }}>{k}: {v}</Tag>
-              </Tooltip>
-            ))}
-          </Space>
-        )
-      },
     },
   ]
 
-  const expandedRowRender = (record: DiagnosisRecord) => (
-    <Descriptions size="small" column={4} bordered>
-      {Object.entries(record.parameters).map(([key, value]) => (
-        <Descriptions.Item key={key} label={key}>{value}</Descriptions.Item>
-      ))}
-      <Descriptions.Item label="诊断方法">{record.diagnosisMethod || '-'}</Descriptions.Item>
-      <Descriptions.Item label="诊断时间">{record.time}</Descriptions.Item>
-      <Descriptions.Item label="描述" span={2}>{record.description}</Descriptions.Item>
-    </Descriptions>
-  )
-
-  const statCards = [
-    { title: '总诊断次数', value: stats.total, icon: <FundProjectionScreenOutlined />, color: '#1677ff' },
-    { title: '正常次数', value: stats.normal, icon: <CheckCircleOutlined />, color: '#52c41a' },
-    { title: '预警次数', value: stats.warning, icon: <WarningOutlined />, color: '#faad14' },
-    { title: '报警次数', value: stats.alarm, icon: <CloseCircleOutlined />, color: '#ff4d4f' },
-    { title: '诊断覆盖井数', value: stats.coveredWells, icon: <ClusterOutlined />, color: '#722ed1', suffix: '口' },
+  const statItems = [
+    { label: '总诊断', value: stats.total, color: '#1677ff', icon: <ClusterOutlined /> },
+    { label: '正常', value: stats.normal, color: '#52c41a', icon: <CheckCircleOutlined /> },
+    { label: '预警', value: stats.warning, color: '#faad14', icon: <WarningOutlined /> },
+    { label: '报警', value: stats.alarm, color: '#ff4d4f', icon: <CloseCircleOutlined /> },
   ]
 
   return (
-    <div className="page-container" style={{ padding: 20, background: '#f0f2f5', minHeight: '100%' }}>
-      {/* 筛选区 */}
-      <Card size="small" style={{ marginBottom: 16 }}>
-        <Space wrap size={[12, 12]}>
-          <RangePicker
-            value={dateRange as [Dayjs, Dayjs] | null}
-            onChange={(val) => setDateRange(val as [Dayjs | null, Dayjs | null] | null)}
-            style={{ width: 260 }}
-            placeholder={['开始日期', '结束日期']}
-          />
-          <Select
-            mode="multiple"
-            placeholder="选择井（可多选）"
-            value={selectedWells}
-            onChange={setSelectedWells}
-            style={{ minWidth: 220 }}
-            maxTagCount={2}
-            allowClear
-            options={wellList.map(w => ({ label: w.name, value: w.id }))}
-          />
-          <Select
-            placeholder="诊断类型"
-            value={selectedType}
-            onChange={setSelectedType}
-            style={{ width: 140 }}
-            allowClear
-            options={diagnosisTypes.map(t => ({ label: t, value: t }))}
-          />
-          <Select
-            placeholder="状态筛选"
-            value={selectedStatus}
-            onChange={setSelectedStatus}
-            style={{ width: 120 }}
-            allowClear
-            options={[
-              { label: '全部', value: '' },
-              { label: '正常', value: 'normal' },
-              { label: '预警', value: 'warning' },
-              { label: '报警', value: 'alarm' },
-            ]}
-          />
-          <Select
-            placeholder="诊断方法"
-            value={selectedMethod}
-            onChange={setSelectedMethod}
-            style={{ width: 150 }}
-            allowClear
-            options={diagnosisMethodList.map(m => ({ label: m, value: m }))}
-          />
-          <Button type="primary" icon={<SearchOutlined />} onClick={handleReset}>
-            重置
-          </Button>
-          <Button icon={<ExportOutlined />} onClick={handleExport}>
-            导出
-          </Button>
-        </Space>
+    <div className="page-container" style={{ height: 'calc(100vh - 64px)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      {/* Top: filter + stats */}
+      <Card bodyStyle={{ padding: '8px 16px' }} style={{ marginBottom: 8, flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+          <Space size={8} wrap>
+            <RangePicker value={dateRange} onChange={v => { if (v?.[0] && v?.[1]) setDateRange([v[0], v[1]]) }}
+              size="small" style={{ width: 240 }} allowClear={false} />
+            <Select placeholder="状态" value={filterStatus} onChange={setFilterStatus} size="small" style={{ width: 90 }} allowClear
+              options={[{ label: '正常', value: 'normal' }, { label: '预警', value: 'warning' }, { label: '报警', value: 'alarm' }]} />
+            <Select placeholder="诊断类型" value={filterType} onChange={setFilterType} size="small" style={{ width: 110 }} allowClear
+              options={faultTypes.map(t => ({ label: t, value: t }))} />
+            <Select placeholder="诊断方法" value={filterMethod} onChange={setFilterMethod} size="small" style={{ width: 120 }} allowClear
+              options={diagMethods.map(m => ({ label: m, value: m }))} />
+            <Button size="small" onClick={handleReset}>重置</Button>
+            <Button size="small" icon={<ExportOutlined />} onClick={handleExport}>导出</Button>
+          </Space>
+          <Space size={16}>
+            {statItems.map(s => (
+              <div key={s.label} style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: 11, color: '#8c8c8c' }}>{s.icon} {s.label}</div>
+                <div style={{ fontSize: 20, fontWeight: 600, color: s.color, lineHeight: 1.3 }}>{s.value}</div>
+              </div>
+            ))}
+          </Space>
+        </div>
       </Card>
 
-      {/* 统计概览 */}
-      <Row gutter={16} style={{ marginBottom: 16 }}>
-        {statCards.map((item) => (
-          <Col key={item.title} xs={24} sm={12} md={8} lg={4} xl={4} style={{ marginBottom: 8 }}>
-            <Card
-              size="small"
-              style={{ borderTop: `3px solid ${item.color}` }}
-              bodyStyle={{ padding: '16px 20px' }}
-            >
-              <Statistic
-                title={<span style={{ fontSize: 13, color: '#888' }}>{item.title}</span>}
-                value={item.value}
-                suffix={item.suffix}
-                valueStyle={{ color: item.color, fontSize: 28, fontWeight: 600 }}
-                prefix={<span style={{ fontSize: 20, marginRight: 6 }}>{item.icon}</span>}
-              />
-            </Card>
-          </Col>
-        ))}
-      </Row>
-
-      {/* 趋势图 + 饼图 */}
-      <Row gutter={16} style={{ marginBottom: 16 }}>
-        <Col xs={24} lg={16}>
-          <Card
-            title={<span><FieldTimeOutlined style={{ marginRight: 8 }} />诊断趋势（近30天）</span>}
-            size="small"
-            bodyStyle={{ padding: '8px 12px' }}
-          >
-            <ReactECharts option={trendOption} style={{ height: 320 }} />
-          </Card>
-        </Col>
-        <Col xs={24} lg={8}>
-          <Card
-            title="工况类型分布"
-            size="small"
-            bodyStyle={{ padding: '8px 12px' }}
-          >
-            <ReactECharts option={typePieOption} style={{ height: 320 }} />
-          </Card>
-        </Col>
-      </Row>
-
-      {/* 明细表格 */}
-      <Card
-        title="诊断记录明细"
-        size="small"
-        style={{ marginBottom: 16 }}
-        bodyStyle={{ padding: '0 12px 12px' }}
-      >
-        <Table<DiagnosisRecord>
-          dataSource={filteredRecords}
-          columns={columns}
-          rowKey="id"
+      {/* Main layout */}
+      <div style={{ flex: 1, display: 'flex', gap: 8, overflow: 'hidden', minHeight: 0 }}>
+        {/* Left: Well list */}
+        <Card
+          bodyStyle={{ padding: 0, display: 'flex', flexDirection: 'column', height: '100%' }}
+          style={{ width: 200, flexShrink: 0, overflow: 'hidden' }}
           size="small"
-          pagination={{ pageSize: 10, showSizeChanger: true, showTotal: (t) => `共 ${t} 条` }}
-          expandable={{ expandedRowRender }}
-          onRow={(record) => ({
-            onClick: () => { setDetailRecord(record); setDetailVisible(true) },
-            style: { cursor: 'pointer' },
-          })}
-          scroll={{ x: 1000 }}
-        />
-      </Card>
-
-      {/* 时间线 + 报警排名 */}
-      <Row gutter={16}>
-        <Col xs={24} lg={12}>
-          <Card
-            title="单井诊断时间线"
-            size="small"
-            extra={
-              <Select
-                placeholder="选择井"
-                value={selectedWellForTimeline}
-                onChange={setSelectedWellForTimeline}
-                style={{ width: 180 }}
-                allowClear
-                options={wellList.filter(w => w.status !== 'offline').map(w => ({ label: w.name, value: w.id }))}
-              />
-            }
-            bodyStyle={{ padding: '16px 20px', maxHeight: 420, overflow: 'auto' }}
-          >
-            {!selectedWellForTimeline ? (
-              <div style={{ textAlign: 'center', color: '#999', padding: 60 }}>
-                请选择一口井查看诊断时间线
-              </div>
-            ) : timelineData.length === 0 ? (
-              <div style={{ textAlign: 'center', color: '#999', padding: 60 }}>
-                该井暂无诊断记录
-              </div>
+          title={<span style={{ fontSize: 12 }}>井列表 {selectedOrg && <Tag color="blue" style={{ fontSize: 10 }}>{selectedOrg.name}</Tag>}</span>}
+        >
+          <div style={{ padding: '6px 8px', borderBottom: '1px solid #f0f0f0' }}>
+            <Input placeholder="搜索井号..." prefix={<SearchOutlined style={{ color: '#bfbfbf' }} />}
+              value={wellSearch} onChange={e => setWellSearch(e.target.value)} allowClear size="small" style={{ fontSize: 12 }} />
+          </div>
+          <div style={{ overflowY: 'auto', flex: 1 }}>
+            {sortedWells.length === 0 ? (
+              <Empty description="暂无数据" style={{ padding: 16 }} image={Empty.PRESENTED_IMAGE_SIMPLE} />
             ) : (
-              <Timeline
-                items={timelineData.map(r => ({
-                  color: statusMap[r.status].color,
-                  children: (
-                    <div
-                      style={{ cursor: 'pointer' }}
-                      onClick={() => { setDetailRecord(r); setDetailVisible(true) }}
-                    >
-                      <div style={{ fontSize: 12, color: '#999', marginBottom: 2 }}>{r.time}</div>
-                      <div style={{ fontWeight: 500 }}>
-                        <Tag
-                          color={r.status === 'normal' ? 'green' : r.status === 'warning' ? 'orange' : 'red'}
-                          style={{ marginRight: 6 }}
-                        >
-                          {statusMap[r.status].text}
-                        </Tag>
-                        {r.type}
+              sortedWells.map(dbw => {
+                const wId = String(dbw.Well_Id)
+                const appW = convertedMap.get(wId)
+                const isSel = wId === selectedWellId
+                return (
+                  <div key={wId} onClick={() => setSelectedWellId(wId)}
+                    style={{
+                      padding: '10px 16px', cursor: 'pointer',
+                      borderLeft: isSel ? '3px solid #1677ff' : '3px solid transparent',
+                      background: isSel ? '#e6f4ff' : 'transparent', transition: 'all 0.2s',
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      borderBottom: '1px solid #f0f0f0',
+                    }}
+                  >
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ fontWeight: 500, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {dbw.Well_Name || wId}
                       </div>
-                      <div style={{ fontSize: 12, color: '#666', marginTop: 2 }}>{r.description}</div>
+                      <div style={{ fontSize: 11, color: '#8c8c8c', marginTop: 2 }}>
+                        {appW ? (diagnosisTypeMap[appW.workConditionCode] || '运行正常') : '电潜泵'}
+                      </div>
+                    </div>
+                    {appW && <Badge status={statusColorMap[appW.status]} text={statusTextMap[appW.status]} />}
+                  </div>
+                )
+              })
+            )}
+          </div>
+        </Card>
+
+        {/* Center: main content */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8, overflow: 'hidden', minWidth: 0 }}>
+          {/* Charts row */}
+          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+            <Card size="small" title={<span style={{ fontSize: 12 }}>诊断趋势</span>} bodyStyle={{ padding: '4px 8px' }} style={{ flex: 3 }}>
+              <ReactECharts option={trendOption} style={{ height: 200 }} />
+            </Card>
+            <Card size="small" title={<span style={{ fontSize: 12 }}>工况类型分布</span>} bodyStyle={{ padding: '4px 8px' }} style={{ flex: 2 }}>
+              <ReactECharts option={typePieOption} style={{ height: 200 }} />
+            </Card>
+          </div>
+
+          {/* Bottom: table / timeline tabs */}
+          <Card
+            size="small"
+            bodyStyle={{ padding: 0, flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+            style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+          >
+            <Tabs activeKey={activeTab} onChange={setActiveTab} size="small"
+              style={{ padding: '0 12px' }}
+              items={[
+                { key: 'table', label: `诊断记录 (${filteredRecords.length})`,
+                  children: (
+                    <div style={{ overflow: 'auto', padding: '0 0 8px' }}>
+                      <Table<DiagnosisRecord>
+                        dataSource={filteredRecords}
+                        columns={columns}
+                        rowKey="id"
+                        size="small"
+                        pagination={{ pageSize: 15, size: 'small', showTotal: t => `共 ${t} 条` }}
+                        scroll={{ x: 800 }}
+                        onRow={record => ({ onClick: () => { setDetailRecord(record); setDetailVisible(true) }, style: { cursor: 'pointer' } })}
+                        rowClassName={(r) => r.status === 'alarm' ? 'diag-row-alarm' : r.status === 'warning' ? 'diag-row-warn' : ''}
+                      />
                     </div>
                   ),
-                }))}
-              />
-            )}
+                },
+                { key: 'timeline', label: `${selectedWell?.name || '单井'}诊断时间线`,
+                  children: (
+                    <div style={{ overflow: 'auto', padding: '12px 16px', maxHeight: 400 }}>
+                      {timelineData.length === 0 ? (
+                        <Empty description="暂无诊断记录" style={{ padding: 40 }} image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                      ) : (
+                        <Timeline
+                          items={timelineData.map(r => ({
+                            color: r.status === 'alarm' ? '#ff4d4f' : r.status === 'warning' ? '#faad14' : '#52c41a',
+                            children: (
+                              <div style={{ cursor: 'pointer' }} onClick={() => { setDetailRecord(r); setDetailVisible(true) }}>
+                                <div style={{ fontSize: 11, color: '#999', marginBottom: 2 }}>{r.time}</div>
+                                <div style={{ fontWeight: 500, fontSize: 13 }}>
+                                  <Tag color={r.status === 'alarm' ? 'red' : r.status === 'warning' ? 'orange' : 'green'} style={{ fontSize: 11, marginRight: 6 }}>
+                                    {statusTextMap[r.status]}
+                                  </Tag>
+                                  {r.type}
+                                  <span style={{ fontSize: 11, color: '#999', marginLeft: 8 }}>{r.diagnosisMethod}</span>
+                                </div>
+                                <div style={{ fontSize: 12, color: '#666', marginTop: 2 }}>{r.description}</div>
+                              </div>
+                            ),
+                          }))}
+                        />
+                      )}
+                    </div>
+                  ),
+                },
+              ]}
+            />
           </Card>
-        </Col>
-        <Col xs={24} lg={12}>
-          <Card
-            title="报警/预警次数排名"
-            size="small"
-            bodyStyle={{ padding: '8px 12px' }}
-          >
-            <ReactECharts option={alarmRankOption} style={{ height: 380 }} />
-          </Card>
-        </Col>
-      </Row>
+        </div>
 
-      {/* 详情弹窗 */}
-      <Modal
-        title="诊断记录详情"
-        open={detailVisible}
-        onCancel={() => setDetailVisible(false)}
-        footer={null}
-        width={680}
-      >
+        {/* Right: alarm ranking */}
+        <Card
+          size="small"
+          title={<span style={{ fontSize: 12 }}>报警/预警排名</span>}
+          bodyStyle={{ padding: '4px 8px', display: 'flex', flexDirection: 'column', height: '100%' }}
+          style={{ width: 280, flexShrink: 0 }}
+        >
+          <ReactECharts option={alarmRankOption} style={{ height: '100%', minHeight: 300 }} />
+        </Card>
+      </div>
+
+      {/* Detail modal */}
+      <Modal title="诊断记录详情" open={detailVisible} onCancel={() => setDetailVisible(false)} footer={null} width={640}>
         {detailRecord && (
           <Descriptions bordered column={2} size="small">
             <Descriptions.Item label="井名">{detailRecord.wellName}</Descriptions.Item>
             <Descriptions.Item label="诊断时间">{detailRecord.time}</Descriptions.Item>
             <Descriptions.Item label="诊断类型">
-              <Tag color={detailRecord.status === 'normal' ? 'green' : detailRecord.status === 'warning' ? 'orange' : 'red'}>
-                {detailRecord.type}
-              </Tag>
+              <Tag color={detailRecord.status === 'alarm' ? 'red' : detailRecord.status === 'warning' ? 'orange' : 'green'}>{detailRecord.type}</Tag>
             </Descriptions.Item>
-            <Descriptions.Item label="状态">
-              <Badge status={statusMap[detailRecord.status].badge} text={statusMap[detailRecord.status].text} />
-            </Descriptions.Item>
+            <Descriptions.Item label="状态"><Badge status={badgeMap[detailRecord.status]} text={statusTextMap[detailRecord.status]} /></Descriptions.Item>
             <Descriptions.Item label="诊断方法">{detailRecord.diagnosisMethod || '-'}</Descriptions.Item>
             <Descriptions.Item label="井号">{detailRecord.wellId}</Descriptions.Item>
             <Descriptions.Item label="描述" span={2}>{detailRecord.description}</Descriptions.Item>
-            {Object.entries(detailRecord.parameters).map(([key, value]) => (
-              <Descriptions.Item key={key} label={key}>{value}</Descriptions.Item>
-            ))}
+            <Descriptions.Item label="泵效">{detailRecord.parameters.efficiency}%</Descriptions.Item>
+            <Descriptions.Item label="电流">{detailRecord.parameters.current} A</Descriptions.Item>
+            <Descriptions.Item label="温度">{detailRecord.parameters.temperature} ℃</Descriptions.Item>
+            <Descriptions.Item label="振动">{detailRecord.parameters.vibration} mm/s</Descriptions.Item>
           </Descriptions>
         )}
       </Modal>
+
+      <style>{`
+        .diag-row-alarm td { background: #fff1f0 !important; }
+        .diag-row-warn td { background: #fffbe6 !important; }
+      `}</style>
     </div>
   )
 }

@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react'
-import { Row, Col, Card, Select, Tag, Space, DatePicker, Table, Badge, Input, Empty } from 'antd'
-import { SearchOutlined } from '@ant-design/icons'
+import { Row, Col, Card, Select, Tag, Space, DatePicker, Table, Badge, Input, Empty, Alert, List } from 'antd'
+import { SearchOutlined, BulbOutlined } from '@ant-design/icons'
 import ReactECharts from 'echarts-for-react'
 import dayjs from 'dayjs'
 import type { Dayjs } from 'dayjs'
@@ -22,6 +22,15 @@ const diagnosisTypeMap: Record<string, string> = {
   C05: '供液不足', C06: '运行正常', C07: '泵内堵塞', C08: '泵入口堵',
   C09: '泵反转', C10: '出砂', C11: '轴断', C12: '管柱漏失',
 }
+
+const paramConfigs = [
+  { key: 'current', label: '电流', unit: 'A', min: 15, max: 35, color: '#1890ff', field: 'current' as keyof WellInfo },
+  { key: 'temperature', label: '温度', unit: '°C', min: 60, max: 100, color: '#ff4d4f', field: 'temperature' as keyof WellInfo },
+  { key: 'vibration', label: '振动', unit: 'mm/s', min: 0, max: 5, color: '#faad14', field: 'vibration' as keyof WellInfo },
+  { key: 'casingPressure', label: '套压', unit: 'MPa', min: 1.5, max: 5, color: '#52c41a', field: 'casingPressure' as keyof WellInfo },
+  { key: 'tubingPressure', label: '油压', unit: 'MPa', min: 1.0, max: 3.5, color: '#722ed1', field: 'tubingPressure' as keyof WellInfo },
+  { key: 'frequency', label: '频率', unit: 'Hz', min: 30, max: 50, color: '#13c2c2', field: 'frequency' as keyof WellInfo },
+]
 
 function convertDbWell(dbWell: DbWell): WellInfo {
   const wellId = String(dbWell.Well_Id || '')
@@ -251,6 +260,74 @@ const ComprehensiveDiagnosis: React.FC = () => {
     },
   ]
 
+  const [xParam, setXParam] = useState('current')
+  const [yParam, setYParam] = useState('temperature')
+
+  const scatterOption = useMemo(() => {
+    if (!selectedWell) return {}
+    const xCfg = paramConfigs.find(c => c.key === xParam)!
+    const yCfg = paramConfigs.find(c => c.key === yParam)!
+    const xBase = selectedWell[xCfg.field] as number
+    const yBase = selectedWell[yCfg.field] as number
+    const [start, end] = dateRange
+    const days = end.diff(start, 'day') + 1
+    const data = Array.from({ length: Math.max(days, 24) }, () => [
+      +(xBase + (Math.random() - 0.5) * xBase * 0.3).toFixed(2),
+      +(yBase + (Math.random() - 0.5) * yBase * 0.3).toFixed(2),
+    ])
+    return {
+      tooltip: { formatter: (p: any) => `${xCfg.label}: ${p.data[0]} ${xCfg.unit}<br/>${yCfg.label}: ${p.data[1]} ${yCfg.unit}` },
+      grid: { left: 55, right: 20, top: 30, bottom: 45 },
+      xAxis: { type: 'value' as const, name: `${xCfg.label}(${xCfg.unit})`, nameLocation: 'middle' as const, nameGap: 28, axisLabel: { fontSize: 10 } },
+      yAxis: { type: 'value' as const, name: `${yCfg.label}(${yCfg.unit})`, axisLabel: { fontSize: 10 } },
+      series: [{ type: 'scatter' as const, data, symbolSize: 7, itemStyle: { color: '#1890ff', opacity: 0.6 } }],
+    }
+  }, [selectedWell, dateRange, xParam, yParam])
+
+  const anomalyData = useMemo(() => {
+    if (!selectedWell) return []
+    return paramConfigs.map(cfg => {
+      const value = selectedWell[cfg.field] as number
+      let status: 'normal' | 'warning' | 'alarm' = 'normal'
+      if (value < cfg.min * 0.8 || value > cfg.max * 1.2) status = 'alarm'
+      else if (value < cfg.min || value > cfg.max) status = 'warning'
+      return { key: cfg.key, param: cfg.label, unit: cfg.unit, value, min: cfg.min, max: cfg.max, status }
+    })
+  }, [selectedWell])
+
+  const anomalyColumns = [
+    { title: '参数', dataIndex: 'param', key: 'param', width: 55 },
+    { title: '当前值', dataIndex: 'value', key: 'value', width: 70, render: (v: number, r: any) => `${v} ${r.unit}` },
+    { title: '下限', dataIndex: 'min', key: 'min', width: 55, render: (v: number, r: any) => `${v} ${r.unit}` },
+    { title: '上限', dataIndex: 'max', key: 'max', width: 55, render: (v: number, r: any) => `${v} ${r.unit}` },
+    { title: '状态', dataIndex: 'status', key: 'status', width: 55,
+      render: (s: string) => {
+        const m: Record<string, { color: string; text: string }> = { normal: { color: 'green', text: '正常' }, warning: { color: 'orange', text: '预警' }, alarm: { color: 'red', text: '报警' } }
+        const c = m[s] ?? m.normal
+        return <Tag color={c.color} style={{ fontSize: 10, lineHeight: '18px', padding: '0 4px' }}>{c.text}</Tag>
+      },
+    },
+  ]
+
+  const diagnosisSummary = useMemo(() => {
+    const alarms = anomalyData.filter(d => d.status === 'alarm')
+    const warnings = anomalyData.filter(d => d.status === 'warning')
+    let level: 'success' | 'warning' | 'error' = 'success'
+    let conclusion = '设备运行正常，各项参数均在合理范围内。'
+    const suggestions: string[] = []
+    if (alarms.length > 0) {
+      level = 'error'
+      conclusion = `检测到 ${alarms.length} 项参数异常报警，需要立即处理。`
+      alarms.forEach(a => suggestions.push(`${a.param}(${a.value}${a.unit})超出正常范围[${a.min}~${a.max}]，建议排查原因`))
+    }
+    if (warnings.length > 0) {
+      if (level !== 'error') { level = 'warning'; conclusion = `检测到 ${warnings.length} 项参数预警，建议关注。` }
+      warnings.forEach(w => suggestions.push(`${w.param}(${w.value}${w.unit})接近阈值边界，建议持续监测`))
+    }
+    if (suggestions.length === 0) suggestions.push('维持当前运行参数', '按计划执行日常巡检', '关注长期趋势变化')
+    return { level, conclusion, suggestions }
+  }, [anomalyData])
+
   const diagTime = dayjs().format('YYYY-MM-DD HH:mm:ss')
 
   return (
@@ -370,18 +447,35 @@ const ComprehensiveDiagnosis: React.FC = () => {
               >
                 <ReactECharts option={prodChartOption} style={{ height: 280 }} />
               </Card>
+              <Card
+                size="small"
+                title={<span style={{ fontSize: 13 }}>{selectedWell.name} 参数相关性分析</span>}
+                extra={
+                  <Space size={4}>
+                    <span style={{ fontSize: 11 }}>X:</span>
+                    <Select size="small" style={{ width: 72, fontSize: 11 }} value={xParam} onChange={setXParam}
+                      options={paramConfigs.map(c => ({ value: c.key, label: c.label }))} />
+                    <span style={{ fontSize: 11 }}>Y:</span>
+                    <Select size="small" style={{ width: 72, fontSize: 11 }} value={yParam} onChange={setYParam}
+                      options={paramConfigs.map(c => ({ value: c.key, label: c.label }))} />
+                  </Space>
+                }
+                bodyStyle={{ padding: '4px 8px' }}
+                style={{ flexShrink: 0 }}
+              >
+                <ReactECharts option={scatterOption} style={{ height: 260 }} />
+              </Card>
             </>
           )}
         </div>
 
         {/* Right: Diagnosis tables */}
-        <div style={{ width: 320, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 8, overflow: 'auto' }}>
+        <div style={{ width: 340, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 8, overflow: 'auto' }}>
           <Card
             size="small"
             title={<span style={{ fontSize: 12 }}>外部供电诊断结果</span>}
             extra={<span style={{ fontSize: 10, color: '#999' }}>诊断时间: {diagTime}</span>}
             bodyStyle={{ padding: 0 }}
-            style={{ marginBottom: 8 }}
           >
             <Table
               className="esp-diag-table"
@@ -409,6 +503,47 @@ const ComprehensiveDiagnosis: React.FC = () => {
               rowClassName={(r: any) => r.prob > 50 ? 'diag-row-alarm' : r.prob > 20 ? 'diag-row-warn' : ''}
             />
           </Card>
+          <Card
+            size="small"
+            title={<span style={{ fontSize: 12 }}>参数异常检测</span>}
+            bodyStyle={{ padding: 0 }}
+          >
+            <Table
+              className="anomaly-table"
+              columns={anomalyColumns}
+              dataSource={anomalyData}
+              rowKey="key"
+              size="small"
+              pagination={false}
+              rowClassName={(r: any) => r.status === 'alarm' ? 'diag-row-alarm' : r.status === 'warning' ? 'diag-row-warn' : ''}
+            />
+          </Card>
+          {selectedWell && (
+            <Card size="small" title={<span style={{ fontSize: 12 }}><BulbOutlined style={{ marginRight: 4 }} />诊断结论与建议</span>} bodyStyle={{ padding: '8px 12px' }}>
+              <Alert
+                type={diagnosisSummary.level}
+                showIcon
+                message={diagnosisSummary.level === 'success' ? '运行正常' : diagnosisSummary.level === 'warning' ? '存在预警' : '存在报警'}
+                description={<span style={{ fontSize: 12 }}>{diagnosisSummary.conclusion}</span>}
+                style={{ marginBottom: 8, padding: '6px 10px' }}
+              />
+              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 8 }}>
+                <Tag color={diagnosisSummary.level === 'success' ? 'green' : diagnosisSummary.level === 'warning' ? 'orange' : 'red'}>{selectedWell.name}</Tag>
+                <Tag>运行 {selectedWell.runDays} 天</Tag>
+                <Tag>泵效 {selectedWell.efficiency}%</Tag>
+              </div>
+              <List
+                size="small"
+                dataSource={diagnosisSummary.suggestions}
+                renderItem={(item, idx) => (
+                  <List.Item style={{ padding: '4px 0', fontSize: 12, borderBottom: '1px solid #f5f5f5' }}>
+                    <Tag color="blue" style={{ fontSize: 10, lineHeight: '16px', padding: '0 4px', marginRight: 6 }}>{idx + 1}</Tag>
+                    {item}
+                  </List.Item>
+                )}
+              />
+            </Card>
+          )}
         </div>
       </div>
 
@@ -422,6 +557,12 @@ const ComprehensiveDiagnosis: React.FC = () => {
           font-size: 12px;
         }
         .prod-diag-table .ant-table-thead > tr > th {
+          background: #e6f4ff !important;
+          color: #1677ff;
+          font-weight: 600;
+          font-size: 12px;
+        }
+        .anomaly-table .ant-table-thead > tr > th {
           background: #e6f4ff !important;
           color: #1677ff;
           font-weight: 600;

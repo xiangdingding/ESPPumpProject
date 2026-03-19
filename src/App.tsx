@@ -7,7 +7,6 @@ import {
   DashboardOutlined,
   MonitorOutlined,
   ThunderboltOutlined,
-  LineChartOutlined,
   ExperimentOutlined,
   AppstoreOutlined,
   SafetyCertificateOutlined,
@@ -33,7 +32,6 @@ import Dashboard from './pages/Dashboard'
 import RealtimeDiagnosis from './pages/RealtimeDiagnosis'
 import ComprehensiveDiagnosis from './pages/ComprehensiveDiagnosis'
 import CurrentSignalDiagnosis from './pages/CurrentSignalDiagnosis'
-import MultiParamDiagnosis from './pages/MultiParamDiagnosis'
 import WorkConditionLibrary from './pages/WorkConditionLibrary'
 import DiagnosisHistory from './pages/DiagnosisHistory'
 import LiquidMeasurement from './pages/LiquidMeasurement'
@@ -70,8 +68,6 @@ const menuItems: MenuProps['items'] = [
       { key: '/realtime-diagnosis', icon: <AimOutlined />, label: '工况实时诊断' },
       { key: '/comprehensive-diagnosis', icon: <AppstoreOutlined />, label: '综合参数诊断' },
       { key: '/current-signal', icon: <ThunderboltOutlined />, label: '电流信号诊断' },
-      { key: '/multi-param', icon: <LineChartOutlined />, label: '多参综合诊断' },
-      { key: '/work-condition-library', icon: <BookOutlined />, label: '工况类型库' },
       { key: '/diagnosis-history', icon: <HistoryOutlined />, label: '诊断历史追踪' },
     ],
   },
@@ -137,6 +133,15 @@ const menuItems: MenuProps['items'] = [
       { key: '/workorder-history', icon: <FileTextOutlined />, label: '历史记录' },
     ],
   },
+  { type: 'divider' },
+  {
+    key: 'data-manage',
+    icon: <DatabaseOutlined />,
+    label: '数据管理',
+    children: [
+      { key: '/work-condition-library', icon: <BookOutlined />, label: '工况类型库' },
+    ],
+  },
 ]
 
 const App: React.FC = () => {
@@ -154,7 +159,8 @@ const App: React.FC = () => {
 
   const getOpenKeys = () => {
     const path = location.pathname
-    if (['/realtime-diagnosis', '/comprehensive-diagnosis', '/current-signal', '/multi-param', '/work-condition-library', '/diagnosis-history'].includes(path)) return ['diagnosis']
+    if (['/realtime-diagnosis', '/comprehensive-diagnosis', '/current-signal', '/diagnosis-history'].includes(path)) return ['diagnosis']
+    if (['/work-condition-library'].includes(path)) return ['data-manage']
     if (['/run-optimization', '/optimization-schemes', '/optimization-effect'].includes(path)) return ['optimization']
     if (['/new-well-design', '/pump-selection', '/design-schemes'].includes(path)) return ['design']
     if (['/big-data', '/nine-zone-data'].includes(path)) return ['data-analysis']
@@ -313,7 +319,6 @@ const App: React.FC = () => {
               <Route path="/realtime-diagnosis" element={<RealtimeDiagnosis />} />
               <Route path="/comprehensive-diagnosis" element={<ComprehensiveDiagnosis />} />
               <Route path="/current-signal" element={<CurrentSignalDiagnosis />} />
-              <Route path="/multi-param" element={<MultiParamDiagnosis />} />
               <Route path="/work-condition-library" element={<WorkConditionLibrary />} />
               <Route path="/diagnosis-history" element={<DiagnosisHistory />} />
               {/* 运行优化 */}
