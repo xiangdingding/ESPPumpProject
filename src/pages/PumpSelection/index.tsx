@@ -13,7 +13,7 @@ import ReactECharts from 'echarts-for-react'
 import { pumpModelLibrary } from '../../mock/wellData'
 import type { PumpModel } from '../../mock/wellData'
 
-const typeColorMap: Record<string, string> = { ESP: 'blue', PCP: 'green' }
+const typeColorMap: Record<string, string> = { ESP: 'blue' }
 
 const buildPerformanceOption = (pump: PumpModel, title?: string) => ({
   title: title ? { text: title, left: 'center', textStyle: { fontSize: 14 } } : undefined,
@@ -298,7 +298,7 @@ const PumpSelection: React.FC = () => {
         <Row gutter={[16, 12]} align="middle">
           <Col xs={24} sm={6} md={4}>
             <Select value={typeFilter} onChange={setTypeFilter} style={{ width: '100%' }}
-              options={[{ value: 'all', label: '全部泵型' }, { value: 'ESP', label: 'ESP 电潜泵' }, { value: 'PCP', label: 'PCP 螺杆泵' }]}
+              options={[{ value: 'all', label: '全部泵型' }, { value: 'ESP', label: 'ESP 电潜泵' }]}
             />
           </Col>
           <Col xs={24} sm={6} md={4}>
@@ -391,7 +391,7 @@ const PumpSelection: React.FC = () => {
                 <p>平均无故障时间(MTBF)：<strong>{selectedPump.mtbf}天</strong></p>
                 <p>设备价格：<strong>¥{selectedPump.price.toLocaleString()}</strong></p>
                 <p>泵型级数：<strong>{selectedPump.stages}级</strong></p>
-                <p>类型：<Tag color={typeColorMap[selectedPump.type]}>{selectedPump.type === 'ESP' ? '电潜泵' : '螺杆泵'}</Tag></p>
+                <p>类型：<Tag color={typeColorMap[selectedPump.type]}>电潜泵</Tag></p>
               </Card>
             </Col>
           </Row>
@@ -484,7 +484,7 @@ const PumpSelection: React.FC = () => {
               </Col>
               <Col span={12}>
                 <Form.Item label="泵型偏好" name="pumpPreference" initialValue="any">
-                  <Select options={[{ value: 'any', label: '不限' }, { value: 'ESP', label: 'ESP 电潜泵' }, { value: 'PCP', label: 'PCP 螺杆泵' }]} />
+                  <Select options={[{ value: 'any', label: '不限' }, { value: 'ESP', label: 'ESP 电潜泵' }]} />
                 </Form.Item>
               </Col>
             </Row>

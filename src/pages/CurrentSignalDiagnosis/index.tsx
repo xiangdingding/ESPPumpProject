@@ -328,7 +328,7 @@ const CurrentSignalDiagnosis: React.FC = () => {
             optionFilterProp="label"
             options={wellList.map((w) => ({
               value: w.id,
-              label: `${w.name} (${w.pumpType}) - ${w.oilField}`,
+              label: `${w.name} (电潜泵) - ${w.oilField}`,
             }))}
           />
         }
@@ -336,7 +336,7 @@ const CurrentSignalDiagnosis: React.FC = () => {
         bodyStyle={{ padding: '12px 24px' }}
       >
         <Descriptions size="small" column={6}>
-          <Descriptions.Item label="泵型">{selectedWell.pumpType}</Descriptions.Item>
+          <Descriptions.Item label="泵型">电潜泵</Descriptions.Item>
           <Descriptions.Item label="频率">{selectedWell.frequency} Hz</Descriptions.Item>
           <Descriptions.Item label="电流">{selectedWell.current} A</Descriptions.Item>
           <Descriptions.Item label="电压">{selectedWell.voltage} V</Descriptions.Item>

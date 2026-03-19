@@ -573,45 +573,41 @@ const GISWellMap: React.FC<GISWellMapProps> = ({ wells, height = 420, middleSlot
 
   const columns = useMemo(() => [
     {
-      title: '时间', dataIndex: 'alarmDate', key: 'alarmDate', width: 140,
+      title: '时间', dataIndex: 'alarmDate', key: 'alarmDate', width: 130,
       render: (text: string) => <span style={{ fontSize: 12, color: text ? '#333' : '#bfbfbf' }}>{text || '-'}</span>,
     },
     {
-      title: '井号', dataIndex: 'name', key: 'name', width: 100,
+      title: '井号', dataIndex: 'name', key: 'name', width: 90,
       render: (text: string) => <a style={{ fontWeight: 500 }}>{text}</a>,
     },
     {
-      title: '诊断类型', dataIndex: 'diagnosisType', key: 'diagnosisType', width: 110,
+      title: '诊断类型', dataIndex: 'diagnosisType', key: 'diagnosisType', width: 90,
       onCell: (r: { status: string }) => ({
         style: { background: statusBgMap[r.status] || '#fff', fontWeight: 500, color: statusColorMap[r.status] || '#333' },
       }),
     },
     {
-      title: '状态', dataIndex: 'status', key: 'status', width: 70,
+      title: '状态', dataIndex: 'status', key: 'status', width: 65,
       render: (s: string) => <Tag color={statusColorMap[s]} style={{ margin: 0 }}>{statusTextMap[s]}</Tag>,
     },
     {
-      title: '描述', dataIndex: 'description', key: 'description', width: 200, ellipsis: true,
+      title: '描述', dataIndex: 'description', key: 'description', ellipsis: true,
       render: (text: string) => <Tooltip title={text}>{text}</Tooltip>,
     },
     {
-      title: '诊断依据', dataIndex: 'diagnosisBasis', key: 'diagnosisBasis', width: 200, ellipsis: true,
+      title: '诊断依据', dataIndex: 'diagnosisBasis', key: 'diagnosisBasis', ellipsis: true,
       render: (text: string) => <Tooltip title={text}>{text}</Tooltip>,
     },
     {
-      title: '处理措施', dataIndex: 'treatment', key: 'treatment', width: 200, ellipsis: true,
+      title: '处理措施', dataIndex: 'treatment', key: 'treatment', ellipsis: true,
       render: (text: string) => <Tooltip title={text}>{text}</Tooltip>,
     },
     {
-      title: '泵效', dataIndex: 'efficiency', key: 'efficiency', width: 70,
+      title: '泵效', dataIndex: 'efficiency', key: 'efficiency', width: 60,
       render: (val: number) => val ? `${val.toFixed(1)}%` : '-',
     },
     {
-      title: '频率', dataIndex: 'frequency', key: 'frequency', width: 70,
-      render: (val: number) => val ? `${val} Hz` : '-',
-    },
-    {
-      title: '操作', key: 'action', width: 120, fixed: 'right' as const,
+      title: '操作', key: 'action', width: 90,
       render: (_: unknown, r: TableRecord) => {
         if (r.status === 'normal' || r.status === 'offline') {
           return <span style={{ color: '#bfbfbf', fontSize: 12 }}>-</span>
@@ -674,7 +670,7 @@ const GISWellMap: React.FC<GISWellMapProps> = ({ wells, height = 420, middleSlot
       {middleSlot}
 
       <Card title={`最近诊断记录 (${tableData.length} 条)`} bodyStyle={{ padding: 0 }}>
-        <Table columns={columns} dataSource={tableData} rowKey="id" size="small" pagination={false} scroll={{ x: 1400, y: 400 }} />
+        <Table columns={columns} dataSource={tableData} rowKey="id" size="small" pagination={false} scroll={{ y: 400 }} />
       </Card>
 
       {/* ========== 工单处理弹窗 ========== */}

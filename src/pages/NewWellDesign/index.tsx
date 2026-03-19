@@ -20,7 +20,7 @@ interface DesignParams {
   waterDensity: number
   waterCut: number
   dailyLiquid: number
-  pumpType: 'ESP' | 'PCP'
+  pumpType: 'ESP'
   targetFlow: number
   targetHead: number
 }
@@ -61,21 +61,21 @@ const calcDesign = (p: DesignParams): DesignResult => {
   const mixDensity = p.oilDensity * (1 - p.waterCut / 100) + p.waterDensity * (p.waterCut / 100)
   const settingDepth = Math.round(p.wellDepth * 0.78)
   const submergence = Math.round(settingDepth - p.wellDepth * 0.55)
-  const headPerStage = p.pumpType === 'ESP' ? 8.5 : 15
+  const headPerStage = 8.5
   const stages = Math.ceil(p.targetHead / headPerStage)
   const ratedHead = Math.round(stages * headPerStage)
   const hydraulicPower = (mixDensity * 9.81 * p.targetFlow * ratedHead) / (86400 * 1000)
-  const estimatedEfficiency = p.pumpType === 'ESP' ? 48 + Math.random() * 10 : 55 + Math.random() * 8
+  const estimatedEfficiency = 48 + Math.random() * 10
   const ratedPower = Math.round(hydraulicPower / (estimatedEfficiency / 100) * 10) / 10
   const motorPower = Math.ceil(ratedPower * 1.25 / 5) * 5
 
   return {
-    pumpModel: p.pumpType === 'ESP' ? `DN${Math.round(p.casingDiameter * 0.6)}-${stages}级离心泵` : `GLB${Math.round(p.targetFlow * 1.2)}-${Math.round(ratedHead / 10)}螺杆泵`,
+    pumpModel: `DN${Math.round(p.casingDiameter * 0.6)}-${stages}级离心泵`,
     stages,
     ratedFlow: p.targetFlow,
     ratedHead,
     ratedPower,
-    motorModel: `Y${motorPower}kW-${p.pumpType === 'ESP' ? '4' : '6'}极潜油电机`,
+    motorModel: `Y${motorPower}kW-4极潜油电机`,
     motorPower,
     cableSpec: motorPower <= 30 ? 'QYJEP3×16mm²' : motorPower <= 60 ? 'QYJEP3×25mm²' : 'QYJEP3×35mm²',
     settingDepth,
@@ -258,7 +258,6 @@ const NewWellDesign: React.FC = () => {
               <Form.Item label="泵型选择" name="pumpType" rules={[{ required: true }]}>
                 <Radio.Group>
                   <Radio.Button value="ESP">ESP 电潜泵</Radio.Button>
-                  <Radio.Button value="PCP">PCP 螺杆泵</Radio.Button>
                 </Radio.Group>
               </Form.Item>
               <Row gutter={12}>
@@ -286,7 +285,7 @@ const NewWellDesign: React.FC = () => {
             <Space direction="vertical" size={16} style={{ width: '100%' }}>
               <Card
                 title={<Space><CheckCircleOutlined style={{ color: '#52c41a' }} />推荐泵型和参数</Space>}
-                extra={<Tag color="blue">{params.pumpType === 'ESP' ? '电潜泵' : '螺杆泵'}</Tag>}
+                extra={<Tag color="blue">电潜泵</Tag>}
               >
                 <Row gutter={[16, 16]}>
                   {[

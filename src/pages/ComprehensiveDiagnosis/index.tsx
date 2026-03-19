@@ -90,7 +90,7 @@ const ComprehensiveDiagnosis: React.FC = () => {
     {
       title: '泵型', dataIndex: 'pumpType', key: 'pumpType', width: 80,
       render: (v: string) => <Tag color={v === 'ESP' ? 'blue' : 'green'}>{v}</Tag>,
-      filters: [{ text: 'ESP', value: 'ESP' }, { text: 'PCP', value: 'PCP' }],
+      filters: [{ text: 'ESP', value: 'ESP' }],
       onFilter: (val, record) => record.pumpType === val,
     },
     {
@@ -205,7 +205,6 @@ const ComprehensiveDiagnosis: React.FC = () => {
             <Select value={selectedPumpType} onChange={setSelectedPumpType} style={{ width: 120 }}>
               <Select.Option value="all">全部</Select.Option>
               <Select.Option value="ESP">电潜泵(ESP)</Select.Option>
-              <Select.Option value="PCP">螺杆泵(PCP)</Select.Option>
             </Select>
           </Space>
           <Space>

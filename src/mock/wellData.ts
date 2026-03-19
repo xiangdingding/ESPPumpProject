@@ -152,7 +152,7 @@ export interface WellInfo {
   stages: number           // 泵级数
   cableSpec: string        // 电缆规格
   separatorType: string    // 分离器类型
-  pumpType?: 'ESP' | 'PCP' // 泵型（可选，兼容）
+  pumpType?: 'ESP' // 泵型（可选，兼容）
 }
 
 export interface DiagnosisRecord {

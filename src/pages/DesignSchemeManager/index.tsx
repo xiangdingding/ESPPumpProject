@@ -21,7 +21,7 @@ const statusConfig: Record<string, { color: string; label: string }> = {
   implemented: { color: 'default', label: '已实施' },
 }
 
-const pumpTypeColor: Record<string, string> = { ESP: 'blue', PCP: 'green' }
+const pumpTypeColor: Record<string, string> = { ESP: 'blue' }
 
 const generateRadarScores = (scheme: DesignScheme) => {
   const base = scheme.score
@@ -296,7 +296,7 @@ const DesignSchemeManager: React.FC = () => {
               options={[{ value: 'all', label: '全部状态' }, ...Object.entries(statusConfig).map(([k, v]) => ({ value: k, label: v.label }))]}
             />
             <Select value={pumpTypeFilter} onChange={setPumpTypeFilter} style={{ width: 120 }}
-              options={[{ value: 'all', label: '全部泵型' }, { value: 'ESP', label: 'ESP' }, { value: 'PCP', label: 'PCP' }]}
+              options={[{ value: 'all', label: '全部泵型' }, { value: 'ESP', label: 'ESP' }]}
             />
             <Input placeholder="搜索名称/ID/设计人" prefix={<SearchOutlined />} style={{ width: 200 }} value={searchText} onChange={e => setSearchText(e.target.value)} allowClear />
           </Space>

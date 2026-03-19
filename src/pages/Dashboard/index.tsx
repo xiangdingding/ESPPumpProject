@@ -21,8 +21,9 @@ import {
 import ReactECharts from 'echarts-for-react'
 import { workConditionTypes, assignWellStatus, generateWellParams } from '../../mock/wellData'
 import type { WorkConditionType, WellInfo } from '../../mock/wellData'
-import { wellDbList, DbWell } from '../../mock/wellDbData'
+import type { DbWell } from '../../mock/wellDbData'
 import GISWellMap from '../../components/GISWellMap'
+import { useOrgContext } from '../../contexts/OrgContext'
 
 function convertDbWellToAppWell(dbWell: DbWell): WellInfo {
   const wellId = String(dbWell.Well_Id || '')
@@ -87,38 +88,34 @@ const conditionIconColors: Record<string, string> = {
 type StatusFilter = 'all' | 'normal' | 'warning' | 'alarm' | 'offline'
 
 const Dashboard: React.FC = () => {
+  const { filteredDbWells } = useOrgContext()
   const [conditionModalVisible, setConditionModalVisible] = useState(false)
   const [selectedCondition, setSelectedCondition] = useState<WorkConditionType | null>(null)
   const [wells, setWells] = useState<WellInfo[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [selectedOrg, setSelectedOrg] = useState<{ id: string; name: string; level: number } | null>(null)
   const [activeFilter, setActiveFilter] = useState<StatusFilter>('all')
 
-  // 从数据库加载井数据
   useEffect(() => {
     try {
       setLoading(true)
-      // 直接使用从数据库同步的mock数据
-      if (wellDbList && wellDbList.length > 0) {
-        const converted = wellDbList.map(convertDbWellToAppWell)
+      if (filteredDbWells && filteredDbWells.length > 0) {
+        const converted = filteredDbWells.map(convertDbWellToAppWell)
         setWells(converted)
       } else {
-        // 使用旧版 mock 数据作为后备
         import('../../mock/wellData').then(mock => {
           setWells(mock.wellList as WellInfo[])
         })
       }
     } catch (err) {
       console.error('加载井数据失败:', err)
-      // 发生异常时加载 mock 数据
       import('../../mock/wellData').then(mock => {
         setWells(mock.wellList as WellInfo[])
       })
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [filteredDbWells])
 
   const handleConditionClick = (wc: WorkConditionType) => {
     setSelectedCondition(wc)

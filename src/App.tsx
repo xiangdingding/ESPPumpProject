@@ -50,6 +50,7 @@ import DesignSchemeManager from './pages/DesignSchemeManager'
 import EfficiencyAnalysis from './pages/EfficiencyAnalysis'
 import { WorkOrderList, WorkOrderHistory } from './pages/WorkOrder'
 import OrgTree from './components/OrgTree'
+import { OrgProvider } from './contexts/OrgContext'
 
 const { Header, Sider, Content } = Layout
 const { Title } = Typography
@@ -66,7 +67,7 @@ const menuItems: MenuProps['items'] = [
     icon: <MonitorOutlined />,
     label: '工况诊断',
     children: [
-      { key: '/realtime-diagnosis', icon: <AimOutlined />, label: '实时工况诊断' },
+      { key: '/realtime-diagnosis', icon: <AimOutlined />, label: '工况实时诊断' },
       { key: '/comprehensive-diagnosis', icon: <AppstoreOutlined />, label: '综合参数诊断' },
       { key: '/current-signal', icon: <ThunderboltOutlined />, label: '电流信号诊断' },
       { key: '/multi-param', icon: <LineChartOutlined />, label: '多参综合诊断' },
@@ -228,7 +229,7 @@ const App: React.FC = () => {
           <Space size={16} style={{ alignItems: 'center' }}>
             <SafetyCertificateOutlined style={{ fontSize: 18, color: '#1677ff' }} />
             <span style={{ fontSize: 15, fontWeight: 500, color: '#333' }}>
-              电潜泵及螺杆泵优化设计及生产管理专家系统
+              ESP电潜泵优化设计及生产管理专家系统
             </span>
           </Space>
           <Space size={12} style={{ alignItems: 'center' }}>
@@ -305,34 +306,36 @@ const App: React.FC = () => {
           minHeight: 'calc(100vh - 64vh - 64px)',
           overflow: 'auto',
         }}>
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            {/* 工况诊断 */}
-            <Route path="/realtime-diagnosis" element={<RealtimeDiagnosis />} />
-            <Route path="/comprehensive-diagnosis" element={<ComprehensiveDiagnosis />} />
-            <Route path="/current-signal" element={<CurrentSignalDiagnosis />} />
-            <Route path="/multi-param" element={<MultiParamDiagnosis />} />
-            <Route path="/work-condition-library" element={<WorkConditionLibrary />} />
-            <Route path="/diagnosis-history" element={<DiagnosisHistory />} />
-            {/* 运行优化 */}
-            <Route path="/run-optimization" element={<RunOptimization />} />
-            <Route path="/optimization-schemes" element={<OptimizationSchemeManager />} />
-            <Route path="/optimization-effect" element={<OptimizationEffect />} />
-            {/* 新井设计 */}
-            <Route path="/new-well-design" element={<NewWellDesign />} />
-            <Route path="/pump-selection" element={<PumpSelection />} />
-            <Route path="/design-schemes" element={<DesignSchemeManager />} />
-            {/* 其他 */}
-            <Route path="/liquid-measurement" element={<LiquidMeasurement />} />
-            <Route path="/big-data" element={<BigDataAnalysis />} />
-            <Route path="/nine-zone-data" element={<BigDataAnalysis />} />
-            <Route path="/nine-zone" element={<NineZoneEvaluation />} />
-            <Route path="/industry-standard" element={<IndustryStandard />} />
-            <Route path="/evaluation-result" element={<EvaluationResult />} />
-            <Route path="/efficiency" element={<EfficiencyAnalysis />} />
-            <Route path="/workorder" element={<WorkOrderList />} />
-            <Route path="/workorder-history" element={<WorkOrderHistory />} />
-          </Routes>
+          <OrgProvider selectedOrg={selectedOrg} wellCount={selectedWellCount}>
+            <Routes>
+              <Route path="/" element={<Dashboard />} />
+              {/* 工况诊断 */}
+              <Route path="/realtime-diagnosis" element={<RealtimeDiagnosis />} />
+              <Route path="/comprehensive-diagnosis" element={<ComprehensiveDiagnosis />} />
+              <Route path="/current-signal" element={<CurrentSignalDiagnosis />} />
+              <Route path="/multi-param" element={<MultiParamDiagnosis />} />
+              <Route path="/work-condition-library" element={<WorkConditionLibrary />} />
+              <Route path="/diagnosis-history" element={<DiagnosisHistory />} />
+              {/* 运行优化 */}
+              <Route path="/run-optimization" element={<RunOptimization />} />
+              <Route path="/optimization-schemes" element={<OptimizationSchemeManager />} />
+              <Route path="/optimization-effect" element={<OptimizationEffect />} />
+              {/* 新井设计 */}
+              <Route path="/new-well-design" element={<NewWellDesign />} />
+              <Route path="/pump-selection" element={<PumpSelection />} />
+              <Route path="/design-schemes" element={<DesignSchemeManager />} />
+              {/* 其他 */}
+              <Route path="/liquid-measurement" element={<LiquidMeasurement />} />
+              <Route path="/big-data" element={<BigDataAnalysis />} />
+              <Route path="/nine-zone-data" element={<BigDataAnalysis />} />
+              <Route path="/nine-zone" element={<NineZoneEvaluation />} />
+              <Route path="/industry-standard" element={<IndustryStandard />} />
+              <Route path="/evaluation-result" element={<EvaluationResult />} />
+              <Route path="/efficiency" element={<EfficiencyAnalysis />} />
+              <Route path="/workorder" element={<WorkOrderList />} />
+              <Route path="/workorder-history" element={<WorkOrderHistory />} />
+            </Routes>
+          </OrgProvider>
         </Content>
       </Layout>
     </Layout>

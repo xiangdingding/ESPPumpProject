@@ -241,7 +241,7 @@ const MultiParamDiagnosis: React.FC = () => {
               optionFilterProp="label"
               options={wellList.map((w) => ({
                 value: w.id,
-                label: `${w.name} (${w.pumpType}) - ${w.oilField}`,
+                label: `${w.name} (电潜泵) - ${w.oilField}`,
               }))}
             />
           </Space>
@@ -358,7 +358,7 @@ const MultiParamDiagnosis: React.FC = () => {
               <Tag color={diagnosisResult.level === 'success' ? 'green' : diagnosisResult.level === 'warning' ? 'orange' : 'red'}>
                 {selectedWell.name}
               </Tag>
-              <Tag>{selectedWell.pumpType}</Tag>
+              <Tag>电潜泵</Tag>
               <Tag>运行 {selectedWell.runDays} 天</Tag>
               <Tag>泵效 {selectedWell.efficiency}%</Tag>
             </div>
