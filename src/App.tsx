@@ -19,7 +19,6 @@ import {
   ToolOutlined,
   FileTextOutlined,
   AimOutlined,
-  HistoryOutlined,
   RocketOutlined,
   SolutionOutlined,
   BuildOutlined,
@@ -33,7 +32,6 @@ import RealtimeDiagnosis from './pages/RealtimeDiagnosis'
 import ComprehensiveDiagnosis from './pages/ComprehensiveDiagnosis'
 import CurrentSignalDiagnosis from './pages/CurrentSignalDiagnosis'
 import WorkConditionLibrary from './pages/WorkConditionLibrary'
-import DiagnosisHistory from './pages/DiagnosisHistory'
 import LiquidMeasurement from './pages/LiquidMeasurement'
 import BigDataAnalysis from './pages/BigDataAnalysis'
 import NineZoneEvaluation from './pages/NineZoneEvaluation'
@@ -45,7 +43,6 @@ import OptimizationEffect from './pages/OptimizationEffect'
 import NewWellDesign from './pages/NewWellDesign'
 import PumpSelection from './pages/PumpSelection'
 import DesignSchemeManager from './pages/DesignSchemeManager'
-import EfficiencyAnalysis from './pages/EfficiencyAnalysis'
 import { WorkOrderList, WorkOrderHistory } from './pages/WorkOrder'
 import OrgTree from './components/OrgTree'
 import { OrgProvider } from './contexts/OrgContext'
@@ -68,7 +65,17 @@ const menuItems: MenuProps['items'] = [
       { key: '/realtime-diagnosis', icon: <AimOutlined />, label: '工况实时诊断' },
       { key: '/comprehensive-diagnosis', icon: <AppstoreOutlined />, label: '综合参数诊断' },
       { key: '/current-signal', icon: <ThunderboltOutlined />, label: '电流信号诊断' },
-      { key: '/diagnosis-history', icon: <HistoryOutlined />, label: '诊断历史追踪' },
+    ],
+  },
+  {
+    key: 'dynamic-eval',
+    icon: <FundOutlined />,
+    label: '动态评价',
+    children: [
+      { key: '/big-data', icon: <DatabaseOutlined />, label: '大数据分析' },
+      { key: '/nine-zone', icon: <AppstoreOutlined />, label: '宏观九区评价' },
+      { key: '/industry-standard', icon: <SafetyCertificateOutlined />, label: '行业标准评价' },
+      { key: '/evaluation-result', icon: <FileTextOutlined />, label: '评价结果分析' },
     ],
   },
   { type: 'divider' },
@@ -98,30 +105,6 @@ const menuItems: MenuProps['items'] = [
     key: '/liquid-measurement',
     icon: <ExperimentOutlined />,
     label: '产液计量',
-  },
-  {
-    key: 'data-analysis',
-    icon: <DatabaseOutlined />,
-    label: '大数据分析',
-    children: [
-      { key: '/big-data', label: '数据分析总览' },
-      { key: '/nine-zone-data', label: '大数据九区分析' },
-    ],
-  },
-  {
-    key: 'evaluation',
-    icon: <FileTextOutlined />,
-    label: '评价体系',
-    children: [
-      { key: '/nine-zone', label: '宏观九区评价' },
-      { key: '/industry-standard', label: '行业标准评价' },
-      { key: '/evaluation-result', label: '评价结果分析' },
-    ],
-  },
-  {
-    key: '/efficiency',
-    icon: <FundOutlined />,
-    label: '效率分析',
   },
   { type: 'divider' },
   {
@@ -159,12 +142,11 @@ const App: React.FC = () => {
 
   const getOpenKeys = () => {
     const path = location.pathname
-    if (['/realtime-diagnosis', '/comprehensive-diagnosis', '/current-signal', '/diagnosis-history'].includes(path)) return ['diagnosis']
+    if (['/realtime-diagnosis', '/comprehensive-diagnosis', '/current-signal'].includes(path)) return ['diagnosis']
     if (['/work-condition-library'].includes(path)) return ['data-manage']
     if (['/run-optimization', '/optimization-schemes', '/optimization-effect'].includes(path)) return ['optimization']
     if (['/new-well-design', '/pump-selection', '/design-schemes'].includes(path)) return ['design']
-    if (['/big-data', '/nine-zone-data'].includes(path)) return ['data-analysis']
-    if (['/nine-zone', '/industry-standard', '/evaluation-result'].includes(path)) return ['evaluation']
+    if (['/big-data', '/nine-zone', '/industry-standard', '/evaluation-result'].includes(path)) return ['dynamic-eval']
     return []
   }
 
@@ -181,7 +163,7 @@ const App: React.FC = () => {
         collapsible
         collapsed={collapsed}
         onCollapse={setCollapsed}
-        width={240}
+        width={180}
         theme="dark"
         style={{
           overflow: 'auto',
@@ -200,9 +182,9 @@ const App: React.FC = () => {
           justifyContent: 'center',
           borderBottom: '1px solid rgba(255,255,255,0.1)',
         }}>
-          <img src="/vite.svg" alt="logo" style={{ width: 32, height: 32, marginRight: collapsed ? 0 : 10 }} />
+          <img src="/vite.svg" alt="logo" style={{ width: 24, height: 24, marginRight: collapsed ? 0 : 8 }} />
           {!collapsed && (
-            <Title level={5} style={{ color: '#fff', margin: 0, fontSize: 14, whiteSpace: 'nowrap' }}>
+            <Title level={5} style={{ color: '#fff', margin: 0, fontSize: 13, whiteSpace: 'nowrap' }}>
               ESP泵优化专家系统
             </Title>
           )}
@@ -214,10 +196,10 @@ const App: React.FC = () => {
           defaultOpenKeys={getOpenKeys()}
           items={menuItems}
           onClick={handleMenuClick}
-          style={{ borderRight: 0 }}
+          style={{ borderRight: 0, fontSize: 13 }}
         />
       </Sider>
-      <Layout style={{ marginLeft: collapsed ? 80 : 240, transition: 'all 0.2s' }}>
+      <Layout style={{ marginLeft: collapsed ? 80 : 180, transition: 'all 0.2s' }}>
         <Header style={{
           padding: '0 24px',
           height: 64,
@@ -320,7 +302,6 @@ const App: React.FC = () => {
               <Route path="/comprehensive-diagnosis" element={<ComprehensiveDiagnosis />} />
               <Route path="/current-signal" element={<CurrentSignalDiagnosis />} />
               <Route path="/work-condition-library" element={<WorkConditionLibrary />} />
-              <Route path="/diagnosis-history" element={<DiagnosisHistory />} />
               {/* 运行优化 */}
               <Route path="/run-optimization" element={<RunOptimization />} />
               <Route path="/optimization-schemes" element={<OptimizationSchemeManager />} />
@@ -332,11 +313,9 @@ const App: React.FC = () => {
               {/* 其他 */}
               <Route path="/liquid-measurement" element={<LiquidMeasurement />} />
               <Route path="/big-data" element={<BigDataAnalysis />} />
-              <Route path="/nine-zone-data" element={<BigDataAnalysis />} />
               <Route path="/nine-zone" element={<NineZoneEvaluation />} />
               <Route path="/industry-standard" element={<IndustryStandard />} />
               <Route path="/evaluation-result" element={<EvaluationResult />} />
-              <Route path="/efficiency" element={<EfficiencyAnalysis />} />
               <Route path="/workorder" element={<WorkOrderList />} />
               <Route path="/workorder-history" element={<WorkOrderHistory />} />
             </Routes>

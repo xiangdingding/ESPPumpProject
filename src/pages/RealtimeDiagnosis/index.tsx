@@ -267,7 +267,7 @@ const RealtimeDiagnosis: React.FC = () => {
       </Row>
 
       <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
-        <Col xs={24} md={6}>
+        <Col xs={24} md={5}>
           <Card
             title={
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -341,7 +341,7 @@ const RealtimeDiagnosis: React.FC = () => {
           </Card>
         </Col>
 
-        <Col xs={24} md={18}>
+        <Col xs={24} md={19}>
           {!selectedWell ? (
             <Card style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <Empty description="请在左侧井列表中选择井" />

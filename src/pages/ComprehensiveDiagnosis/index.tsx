@@ -361,7 +361,7 @@ const ComprehensiveDiagnosis: React.FC = () => {
         {/* Left: Well tree list */}
         <Card
           bodyStyle={{ padding: 0, display: 'flex', flexDirection: 'column', height: '100%' }}
-          style={{ width: 200, flexShrink: 0, overflow: 'hidden' }}
+          style={{ width: 160, flexShrink: 0, overflow: 'hidden' }}
           size="small"
           title={
             <span style={{ fontSize: 12 }}>

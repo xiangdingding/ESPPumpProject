@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react'
 import { Card, Select, Tag, Space, DatePicker, Table, Badge, Input, Empty, Descriptions, Divider } from 'antd'
-import { SearchOutlined } from '@ant-design/icons'
+import { SearchOutlined, RobotOutlined } from '@ant-design/icons'
 import ReactECharts from 'echarts-for-react'
 import dayjs from 'dayjs'
 import type { Dayjs } from 'dayjs'
@@ -251,6 +251,37 @@ const CurrentSignalDiagnosis: React.FC = () => {
     }
   }, [selectedWell, trendData])
 
+  const currentSummary = useMemo(() => {
+    if (!selectedWell || diagRecords.length === 0) return null
+    const total = diagRecords.length
+    const normalCount = diagRecords.filter(r => r.result === '正常').length
+    const normalRate = (normalCount / total * 100).toFixed(1)
+    const abnormals = diagRecords.filter(r => r.result !== '正常')
+    const abnormalTypes: Record<string, number> = {}
+    abnormals.forEach(r => { abnormalTypes[r.result] = (abnormalTypes[r.result] || 0) + 1 })
+    const sortedTypes = Object.entries(abnormalTypes).sort((a, b) => b[1] - a[1])
+
+    const avgCurrent = (diagRecords.reduce((s, r) => s + r.current, 0) / total).toFixed(2)
+    const maxCurrent = Math.max(...diagRecords.map(r => r.current)).toFixed(2)
+    const minCurrent = Math.min(...diagRecords.map(r => r.current)).toFixed(2)
+
+    const level = Number(normalRate) >= 85 ? '正常' : Number(normalRate) >= 60 ? '需关注' : '异常'
+    const levelColor = level === '正常' ? '#52c41a' : level === '需关注' ? '#faad14' : '#ff4d4f'
+
+    const conclusion = `${selectedWell.name} 在监测周期内共${total}次诊断记录，其中正常${normalCount}次（占比${normalRate}%），平均电流${avgCurrent}A，最大${maxCurrent}A，最小${minCurrent}A。`
+
+    let suggestion = ''
+    if (abnormals.length === 0) {
+      suggestion = '电流信号运行平稳，各项指标正常，建议保持当前运行参数，定期监测。'
+    } else {
+      const typeDesc = sortedTypes.map(([t, c]) => `${t}${c}次`).join('，')
+      const mainType = sortedTypes[0][0]
+      suggestion = `异常记录${abnormals.length}次：${typeDesc}。主要问题为"${mainType}"，建议检查电机绝缘、负载工况及供电线路，必要时调整运行频率或安排检泵作业。`
+    }
+
+    return { conclusion, suggestion, level, levelColor }
+  }, [selectedWell, diagRecords])
+
   const diagColumns = [
     { title: '序号', dataIndex: 'seq', key: 'seq', width: 50, align: 'center' as const },
     { title: '时间', dataIndex: 'time', key: 'time', width: 100 },
@@ -283,7 +314,7 @@ const CurrentSignalDiagnosis: React.FC = () => {
         {/* Left: Well list */}
         <Card
           bodyStyle={{ padding: 0, display: 'flex', flexDirection: 'column', height: '100%' }}
-          style={{ width: 200, flexShrink: 0, overflow: 'hidden' }}
+          style={{ width: 160, flexShrink: 0, overflow: 'hidden' }}
           size="small"
           title={<span style={{ fontSize: 12 }}>井列表 {selectedOrg && <Tag color="blue" style={{ fontSize: 10 }}>{selectedOrg.name}</Tag>}</span>}
         >
@@ -387,6 +418,29 @@ const CurrentSignalDiagnosis: React.FC = () => {
           />
         </Card>
       </div>
+
+      {/* Bottom: AI summary */}
+      {currentSummary && (
+        <Card size="small" style={{ marginTop: 8, flexShrink: 0 }} bodyStyle={{ padding: '8px 16px' }}
+          title={
+            <span style={{ fontSize: 12, color: '#1677ff', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <RobotOutlined style={{ fontSize: 14 }} /> AI 诊断结论与建议
+            </span>
+          }
+        >
+          <div style={{ fontSize: 12, lineHeight: 1.8, color: '#333' }}>
+            <div style={{ marginBottom: 4 }}>
+              <Tag color="#1677ff" style={{ fontWeight: 600, marginRight: 6 }}>诊断结论</Tag>
+              {currentSummary.conclusion}
+              <Tag color={currentSummary.levelColor} style={{ marginLeft: 6, fontWeight: 600 }}>{currentSummary.level}</Tag>
+            </div>
+            <div>
+              <Tag color="#722ed1" style={{ fontWeight: 600, marginRight: 6 }}>建议措施</Tag>
+              {currentSummary.suggestion}
+            </div>
+          </div>
+        </Card>
+      )}
 
       <style>{`
         .diag-row-alarm td { background: #fff1f0 !important; }
