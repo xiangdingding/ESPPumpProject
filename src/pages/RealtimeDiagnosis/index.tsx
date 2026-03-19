@@ -324,7 +324,7 @@ const RealtimeDiagnosis: React.FC = () => {
                           {dbw.Well_Name || wId}
                         </div>
                         <div style={{ fontSize: 11, color: '#8c8c8c', marginTop: 2 }}>
-                          电潜泵
+                          {appWell ? (diagnosisTypeMap[appWell.workConditionCode] || '运行正常') : '电潜泵'}
                         </div>
                       </div>
                       {appWell && (
