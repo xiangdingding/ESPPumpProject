@@ -223,6 +223,20 @@ const BigDataAnalysis: React.FC = () => {
     }))
   }, [scatterData])
 
+  const pieOption = useMemo(() => ({
+    tooltip: { trigger: 'item' as const, formatter: '{b}: {c}口 ({d}%)' },
+    legend: { type: 'scroll' as const, bottom: 0, textStyle: { fontSize: 9 }, itemWidth: 10, itemHeight: 6 },
+    series: [{
+      type: 'pie' as const, radius: ['30%', '60%'], center: ['50%', '42%'],
+      avoidLabelOverlap: true,
+      itemStyle: { borderRadius: 3, borderColor: '#fff', borderWidth: 1 },
+      label: { show: true, formatter: '{b}\n{d}%', fontSize: 10 },
+      data: zoneStats.filter(z => z.count > 0).map(z => ({
+        name: z.zone, value: z.count, itemStyle: { color: zoneColors[z.key] },
+      })),
+    }],
+  }), [zoneStats])
+
   const zoneColumns = [
     { title: '分区', dataIndex: 'zone', key: 'zone', width: 110,
       render: (v: string, _: any, idx: number) => <span style={{ color: zoneColors[idx], fontWeight: 500 }}>{v}</span>,
@@ -375,16 +389,23 @@ const BigDataAnalysis: React.FC = () => {
           <Card size="small" bodyStyle={{ padding: '4px 8px' }} style={{ flexShrink: 0 }}>
             <ReactECharts option={scatterOption} style={{ height: 340 }} />
           </Card>
-          <Card size="small" title={<span style={{ fontSize: 12, color: '#1677ff' }}>{orgName} 宏观评价统计</span>} bodyStyle={{ padding: 0 }} style={{ flexShrink: 0 }}>
-            <Table
-              className="zone-stats-table"
-              columns={zoneColumns}
-              dataSource={zoneStats}
-              rowKey="key"
-              size="small"
-              pagination={false}
-            />
-          </Card>
+          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+            <Card size="small" title={<span style={{ fontSize: 12, color: '#1677ff' }}>大数据分布饼图</span>}
+              bodyStyle={{ padding: '0 4px' }} style={{ flex: 1 }}>
+              <ReactECharts option={pieOption} style={{ height: 200 }} />
+            </Card>
+            <Card size="small" title={<span style={{ fontSize: 12, color: '#1677ff' }}>{orgName} 宏观评价统计</span>}
+              bodyStyle={{ padding: 0 }} style={{ flex: 1 }}>
+              <Table
+                className="zone-stats-table"
+                columns={zoneColumns}
+                dataSource={zoneStats}
+                rowKey="key"
+                size="small"
+                pagination={false}
+              />
+            </Card>
+          </div>
         </div>
 
         {/* Right: eval table + trend chart */}
