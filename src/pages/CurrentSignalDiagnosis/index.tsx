@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react'
-import { Card, Select, Tag, Space, DatePicker, Table, Badge, Input, Empty, Descriptions, Divider } from 'antd'
+import { Card, Select, Tag, Space, DatePicker, Table, Badge, Input, Empty, Divider } from 'antd'
 import { SearchOutlined, RobotOutlined } from '@ant-design/icons'
 import ReactECharts from 'echarts-for-react'
 import dayjs from 'dayjs'
@@ -19,9 +19,6 @@ const diagnosisTypeMap: Record<string, string> = {
   C01: '气体影响', C02: '气锁', C03: '稠油及乳化', C04: '叶轮磨损',
   C05: '供液不足', C06: '运行正常', C07: '泵内堵塞', C08: '泵入口堵',
   C09: '泵反转', C10: '出砂', C11: '轴断', C12: '管柱漏失',
-}
-const statusTagColorMap: Record<string, string> = {
-  normal: '#52c41a', warning: '#faad14', alarm: '#ff4d4f', offline: '#d9d9d9',
 }
 
 function convertDbWell(dbWell: DbWell): WellInfo {
@@ -237,10 +234,10 @@ const CurrentSignalDiagnosis: React.FC = () => {
     if (!selectedWell || trendData.length === 0) return {}
     return {
       title: { text: `${selectedWell.name} 电流变化趋势曲线`, left: 'center', top: 4, textStyle: { fontSize: 13, color: '#1677ff' } },
-      tooltip: { trigger: 'axis' as const, formatter: (p: any) => `${p[0].axisValue}<br/>录电流: ${p[0].data} A` },
+      tooltip: { trigger: 'axis' as const, formatter: (p: any) => `${p[0].axisValue}<br/>泵电流: ${p[0].data} A` },
       grid: { left: 55, right: 20, top: 40, bottom: 40 },
       xAxis: { type: 'category' as const, data: trendData.map(d => d.time), axisLabel: { fontSize: 10, rotate: 30 } },
-      yAxis: { type: 'value' as const, name: '录电流(A)', axisLabel: { fontSize: 10 } },
+      yAxis: { type: 'value' as const, name: '泵电流(A)', axisLabel: { fontSize: 10 } },
       dataZoom: [{ type: 'inside' as const }, { type: 'slider' as const, height: 14, bottom: 4 }],
       series: [{
         type: 'line' as const, data: trendData.map(d => d.value), smooth: true,
@@ -285,7 +282,7 @@ const CurrentSignalDiagnosis: React.FC = () => {
   const diagColumns = [
     { title: '序号', dataIndex: 'seq', key: 'seq', width: 50, align: 'center' as const },
     { title: '时间', dataIndex: 'time', key: 'time', width: 100 },
-    { title: '录电流(A)', dataIndex: 'current', key: 'current', width: 85, align: 'center' as const },
+    { title: '泵电流(A)', dataIndex: 'current', key: 'current', width: 85, align: 'center' as const },
     { title: '诊断结果', dataIndex: 'result', key: 'result', width: 90,
       render: (v: string, r: DiagRecord) => <Tag color={r.resultColor} style={{ fontSize: 11, padding: '0 6px' }}>{v}</Tag>,
     },
@@ -293,23 +290,26 @@ const CurrentSignalDiagnosis: React.FC = () => {
 
   return (
     <div className="page-container" style={{ height: 'calc(100vh - 64px)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      {/* Top info bar */}
-      {selectedWell && (
-        <Card bodyStyle={{ padding: '8px 16px' }} style={{ marginBottom: 8, flexShrink: 0 }}>
-          <Descriptions size="small" column={{ xs: 3, sm: 4, md: 7 }}>
-            <Descriptions.Item label="泵型">电潜泵</Descriptions.Item>
-            <Descriptions.Item label="频率">{selectedWell.frequency} Hz</Descriptions.Item>
-            <Descriptions.Item label="电流">{selectedWell.current} A</Descriptions.Item>
-            <Descriptions.Item label="电压">{selectedWell.voltage} V</Descriptions.Item>
-            <Descriptions.Item label="功率">{selectedWell.power} kW</Descriptions.Item>
-            <Descriptions.Item label="状态">
-              <Tag color={statusTagColorMap[selectedWell.status]} style={{ fontWeight: 600 }}>{statusTextMap[selectedWell.status]}</Tag>
-            </Descriptions.Item>
-          </Descriptions>
-        </Card>
-      )}
+      {/* Top bar */}
+      <Card bodyStyle={{ padding: '8px 16px' }} style={{ marginBottom: 8, flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+          <Space size={12} wrap>
+            <Space size={4}>
+              <span style={{ fontWeight: 500, fontSize: 13 }}>电流日卡片日期：</span>
+              <DatePicker value={dailyDate} onChange={v => v && setDailyDate(v)} size="small" allowClear={false} style={{ width: 130 }} />
+            </Space>
+            <Divider type="vertical" />
+            <Space size={4}>
+              <span style={{ fontWeight: 500, fontSize: 13 }}>电流周卡片区间：</span>
+              <DatePicker value={weekStart} onChange={v => v && setWeekStart(v)} size="small" allowClear={false} style={{ width: 130 }} />
+              <span style={{ color: '#999' }}>~</span>
+              <DatePicker value={weekEnd} onChange={v => v && setWeekEnd(v)} size="small" allowClear={false} style={{ width: 130 }} />
+            </Space>
+          </Space>
+        </div>
+      </Card>
 
-      {/* Main 3-column layout */}
+      {/* Main content: 3-column layout */}
       <div style={{ flex: 1, display: 'flex', gap: 8, overflow: 'hidden', minHeight: 0 }}>
         {/* Left: Well list */}
         <Card
@@ -364,23 +364,6 @@ const CurrentSignalDiagnosis: React.FC = () => {
             </Card>
           ) : (
             <>
-              {/* Date pickers bar */}
-              <Card bodyStyle={{ padding: '6px 12px' }} style={{ flexShrink: 0 }}>
-                <Space size={16} wrap>
-                  <Space size={4}>
-                    <span style={{ fontWeight: 500, fontSize: 12 }}>电流日卡片日期：</span>
-                    <DatePicker value={dailyDate} onChange={v => v && setDailyDate(v)} size="small" allowClear={false} style={{ width: 130 }} />
-                  </Space>
-                  <Divider type="vertical" />
-                  <Space size={4}>
-                    <span style={{ fontWeight: 500, fontSize: 12 }}>电流周卡片区间：</span>
-                    <DatePicker value={weekStart} onChange={v => v && setWeekStart(v)} size="small" allowClear={false} style={{ width: 130 }} />
-                    <span style={{ color: '#999' }}>~</span>
-                    <DatePicker value={weekEnd} onChange={v => v && setWeekEnd(v)} size="small" allowClear={false} style={{ width: 130 }} />
-                  </Space>
-                </Space>
-              </Card>
-
               {/* Two polar charts side by side */}
               <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
                 <Card size="small" bodyStyle={{ padding: '4px 8px' }} style={{ flex: 1 }}>
