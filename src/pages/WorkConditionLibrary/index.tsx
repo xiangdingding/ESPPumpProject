@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react'
 import {
-  Card, Input, Select, Row, Col, Tag, Badge, Collapse, List, Empty, Space, Descriptions, Table, Divider,
+  Card, Input, Select, Row, Col, Tag, Badge, Collapse, List, Empty, Space, Descriptions, Divider,
 } from 'antd'
 import {
   SearchOutlined,
@@ -13,7 +13,6 @@ import {
 import ReactECharts from 'echarts-for-react'
 import {
   workConditionTypes,
-  diagnosisRecords,
 } from '../../mock/wellData'
 import type { WorkConditionType } from '../../mock/wellData'
 
@@ -73,58 +72,6 @@ const WorkConditionLibrary: React.FC = () => {
     })
   }, [searchText, categoryFilter])
 
-  const categoryStats = useMemo(() => {
-    const stats: Record<string, number> = {}
-    workConditionTypes.forEach(wc => {
-      stats[wc.category] = (stats[wc.category] || 0) + 1
-    })
-    return stats
-  }, [])
-
-  const statsChartOption = useMemo(() => {
-    const categories = Object.keys(categoryStats)
-    return {
-      title: { text: '工况类别统计', left: 'center', textStyle: { fontSize: 14, color: '#333' } },
-      tooltip: { trigger: 'axis' as const },
-      grid: { top: 50, right: 20, bottom: 40, left: 60 },
-      xAxis: {
-        type: 'category' as const,
-        data: categories.map(c => categoryLabelMap[c] || c),
-        axisLabel: { color: '#666', fontSize: 11 },
-        axisLine: { lineStyle: { color: '#ccc' } },
-      },
-      yAxis: {
-        type: 'value' as const,
-        minInterval: 1,
-        axisLabel: { color: '#666' },
-        axisLine: { lineStyle: { color: '#ccc' } },
-      },
-      series: [{
-        type: 'bar',
-        data: categories.map(c => ({
-          value: categoryStats[c],
-          itemStyle: { color: categoryColorMap[c] || '#1677ff' },
-        })),
-        barWidth: 40,
-        label: { show: true, position: 'top' as const, fontSize: 12, color: '#333' },
-      }],
-    }
-  }, [categoryStats])
-
-  const getRelatedRecords = (code: string) => {
-    const condType = workConditionTypes.find(w => w.code === code)
-    if (!condType) return []
-    return diagnosisRecords.filter(r =>
-      r.type.includes(condType.name) ||
-      condType.name.includes(r.type) ||
-      (code === 'C06' && r.status === 'normal') ||
-      (code === 'C05' && r.type.includes('供液')) ||
-      (code === 'C01' && r.type.includes('气')) ||
-      (code === 'C02' && r.type.includes('气锁')) ||
-      (code === 'C04' && r.type.includes('泵效')) ||
-      (code === 'C10' && r.type.includes('振动'))
-    ).slice(0, 5)
-  }
 
   const getTypicalCurrentOption = (code: string) => {
     const wc = workConditionTypes.find(w => w.code === code)
@@ -156,8 +103,6 @@ const WorkConditionLibrary: React.FC = () => {
   const renderConditionCard = (wc: WorkConditionType) => {
     const isExpanded = expandedCode === wc.code
     const sevTag = severityTagMap[wc.severity]
-    const relatedRecords = getRelatedRecords(wc.code)
-
     return (
       <Col xs={24} sm={12} lg={8} key={wc.code}>
         <Card
@@ -223,29 +168,6 @@ const WorkConditionLibrary: React.FC = () => {
                 )}
               />
 
-              {relatedRecords.length > 0 && (
-                <>
-                  <Divider style={{ margin: '8px 0' }} />
-                  <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6 }}>相关诊断记录</div>
-                  <Table
-                    size="small"
-                    dataSource={relatedRecords}
-                    rowKey="id"
-                    pagination={false}
-                    columns={[
-                      { title: '井名', dataIndex: 'wellName', key: 'wellName', width: 100 },
-                      { title: '类型', dataIndex: 'type', key: 'type', width: 80,
-                        render: (t: string, r: any) => (
-                          <Tag color={r.status === 'normal' ? 'success' : r.status === 'warning' ? 'warning' : 'error'}>
-                            {t}
-                          </Tag>
-                        ),
-                      },
-                      { title: '时间', dataIndex: 'time', key: 'time', width: 140, render: (t: string) => <span style={{ fontSize: 11 }}>{t}</span> },
-                    ]}
-                  />
-                </>
-              )}
             </div>
           )}
         </Card>
@@ -298,10 +220,6 @@ const WorkConditionLibrary: React.FC = () => {
         </Card>
       )}
 
-      {/* 底部统计 */}
-      <Card size="small" style={{ marginTop: 8 }} bodyStyle={{ padding: 12 }}>
-        <ReactECharts option={statsChartOption} style={{ height: 260 }} />
-      </Card>
     </div>
   )
 }
