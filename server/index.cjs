@@ -4,6 +4,7 @@ let dbModule
 try { dbModule = require('./db.cjs') } catch (e) { dbModule = null }
 const { query, getTableData, getTableSchema } = dbModule || { query: async () => [], getTableData: async () => [], getTableSchema: async () => [] }
 const wo = require('./workOrderDb.cjs')
+const oe = require('./optExecDb.cjs')
 
 const app = express()
 app.use(cors())
@@ -251,8 +252,67 @@ app.post('/api/workorders/:id/log', (req, res) => {
   }
 })
 
+// ==================== 优化执行记录 API (SQLite) ====================
+
+app.get('/api/opt-exec', (req, res) => {
+  try {
+    const data = oe.searchExecutions(req.query)
+    res.json({ success: true, data })
+  } catch (err) { res.status(500).json({ success: false, error: err.message }) }
+})
+
+app.get('/api/opt-exec/stats', (req, res) => {
+  try {
+    const rows = oe.getStats()
+    const stats = {}
+    rows.forEach(r => { stats[r.status] = r.count })
+    res.json({ success: true, data: stats })
+  } catch (err) { res.status(500).json({ success: false, error: err.message }) }
+})
+
+app.get('/api/opt-exec/:id', (req, res) => {
+  try {
+    const exec = oe.getById(req.params.id)
+    if (!exec) return res.status(404).json({ success: false, error: '记录不存在' })
+    const logs = oe.getLogs(req.params.id)
+    res.json({ success: true, data: { ...exec, logs } })
+  } catch (err) { res.status(500).json({ success: false, error: err.message }) }
+})
+
+app.get('/api/opt-exec/well/:wellId', (req, res) => {
+  try {
+    const data = oe.getByWell(req.params.wellId)
+    res.json({ success: true, data })
+  } catch (err) { res.status(500).json({ success: false, error: err.message }) }
+})
+
+app.get('/api/opt-exec/well/:wellId/active', (req, res) => {
+  try {
+    const exec = oe.getActiveByWell(req.params.wellId)
+    res.json({ success: true, data: exec || null })
+  } catch (err) { res.status(500).json({ success: false, error: err.message }) }
+})
+
+app.post('/api/opt-exec', (req, res) => {
+  try {
+    const exec = oe.createExecution(req.body)
+    const logs = oe.getLogs(exec.id)
+    res.json({ success: true, data: { ...exec, logs } })
+  } catch (err) { res.status(500).json({ success: false, error: err.message }) }
+})
+
+app.put('/api/opt-exec/:id', (req, res) => {
+  try {
+    const exec = oe.advanceExecution(req.params.id, req.body)
+    if (!exec) return res.status(404).json({ success: false, error: '记录不存在' })
+    const logs = oe.getLogs(req.params.id)
+    res.json({ success: true, data: { ...exec, logs } })
+  } catch (err) { res.status(500).json({ success: false, error: err.message }) }
+})
+
 const PORT = 3002
 app.listen(PORT, () => {
   console.log(`API Server running on http://localhost:${PORT}`)
   console.log(`[WorkOrder] SQLite database ready`)
+  console.log(`[OptExec] SQLite database ready`)
 })

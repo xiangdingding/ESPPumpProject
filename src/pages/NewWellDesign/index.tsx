@@ -41,20 +41,20 @@ interface DesignResult {
 }
 
 const defaultParams: DesignParams = {
-  wellDepth: 2800,
-  casingDiameter: 139.7,
+  wellDepth: 3200,
+  casingDiameter: 177.8,
   tubingDiameter: 73,
-  formationPressure: 25,
-  formationTemperature: 90,
-  saturationPressure: 12,
-  gasOilRatio: 40,
-  oilDensity: 860,
-  waterDensity: 1050,
-  waterCut: 70,
-  dailyLiquid: 50,
+  formationPressure: 28.5,
+  formationTemperature: 95,
+  saturationPressure: 10.8,
+  gasOilRatio: 35,
+  oilDensity: 850,
+  waterDensity: 1020,
+  waterCut: 65,
+  dailyLiquid: 80,
   pumpType: 'ESP',
-  targetFlow: 60,
-  targetHead: 2000,
+  targetFlow: 100,
+  targetHead: 2200,
 }
 
 const calcDesign = (p: DesignParams): DesignResult => {

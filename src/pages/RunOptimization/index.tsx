@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react'
-import { Card, Tag, Badge, DatePicker, Button, Space, Table, Input, Empty, message } from 'antd'
-import { SearchOutlined, ExportOutlined, LeftOutlined, RightOutlined, ThunderboltOutlined } from '@ant-design/icons'
+import { Card, Tag, Badge, DatePicker, Button, Space, Table, Input, Empty, message, Tooltip } from 'antd'
+import { SearchOutlined, ExportOutlined, LeftOutlined, RightOutlined, ThunderboltOutlined, CheckCircleOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import dayjs from 'dayjs'
 import type { Dayjs } from 'dayjs'
@@ -8,6 +8,8 @@ import { assignWellStatus, generateWellParams } from '../../mock/wellData'
 import type { WellInfo } from '../../mock/wellData'
 import type { DbWell } from '../../mock/wellDbData'
 import { useOrgContext } from '../../contexts/OrgContext'
+import { fetchOptExecs, STATUS_LABELS, STATUS_COLORS } from '../../api/optExecApi'
+import type { OptExecDTO } from '../../api/optExecApi'
 
 const statusColorMap: Record<string, 'success' | 'warning' | 'error' | 'default'> = {
   normal: 'success', warning: 'warning', alarm: 'error', offline: 'default',
@@ -93,6 +95,22 @@ const RunOptimization: React.FC = () => {
   const [selectedWellId, setSelectedWellId] = useState<string | null>(null)
   const [wellSearch, setWellSearch] = useState('')
   const [queryDate, setQueryDate] = useState<Dayjs>(dayjs())
+  const [execMap, setExecMap] = useState<Map<string, OptExecDTO>>(new Map())
+
+  useEffect(() => {
+    fetchOptExecs().then(data => {
+      const map = new Map<string, OptExecDTO>()
+      for (const e of data) {
+        if (e.status !== 'cancelled') {
+          const existing = map.get(e.well_id)
+          if (!existing || new Date(e.confirmed_at) > new Date(existing.confirmed_at)) {
+            map.set(e.well_id, e)
+          }
+        }
+      }
+      setExecMap(map)
+    }).catch(() => {})
+  }, [])
 
   const convertedMap = useMemo(() => {
     const map = new Map<string, WellInfo>()
@@ -103,7 +121,7 @@ const RunOptimization: React.FC = () => {
   const activeWells = useMemo(() => Array.from(convertedMap.values()).filter(w => w.status !== 'offline'), [convertedMap])
   const needOptWells = useMemo(() => {
     const statusOrder: Record<string, number> = { alarm: 0, warning: 1, normal: 2, offline: 3 }
-    return [...activeWells.filter(w => w.workConditionCode !== 'C06')]
+    return [...activeWells.filter(w => w.workConditionCode === 'C06')]
       .sort((a, b) => (statusOrder[a.status] ?? 9) - (statusOrder[b.status] ?? 9))
   }, [activeWells])
 
@@ -175,14 +193,37 @@ const RunOptimization: React.FC = () => {
         return <span style={{ color, fontWeight: 500 }}>{v}</span>
       },
     },
+    { title: '执行状态', key: 'execStatus', width: 90, align: 'center' as const, fixed: 'right' as const,
+      render: (_: any, row: WellRow) => {
+        const exec = execMap.get(row.key)
+        if (!exec) return <span style={{ color: '#bbb', fontSize: 11 }}>未确认</span>
+        return (
+          <Tooltip title={`${exec.scheme_type} ${exec.confirmed_at}`}>
+            <Tag color={STATUS_COLORS[exec.status]} style={{ fontSize: 10, margin: 0 }}>
+              {STATUS_LABELS[exec.status]}
+            </Tag>
+          </Tooltip>
+        )
+      },
+    },
     { title: '操作', key: 'action', width: 110, align: 'center' as const, fixed: 'right' as const,
-      render: (_: any, row: WellRow) => (
-        <Button
-          size="small" type="link" icon={<ThunderboltOutlined />}
-          style={{ fontSize: 11, padding: '0 4px' }}
-          onClick={() => navigate('/production-optimization', { state: { wellId: row.key } })}
-        >生产协调优化</Button>
-      )
+      render: (_: any, row: WellRow) => {
+        const exec = execMap.get(row.key)
+        return (
+          <Space size={2}>
+            <Button
+              size="small" type="link" icon={<ThunderboltOutlined />}
+              style={{ fontSize: 11, padding: '0 4px' }}
+              onClick={() => navigate('/production-optimization', { state: { wellId: row.key } })}
+            >优化</Button>
+            {exec && (
+              <Tooltip title={`${exec.scheme_type} ${STATUS_LABELS[exec.status]} ${exec.confirmed_at}`}>
+                <CheckCircleOutlined style={{ color: STATUS_COLORS[exec.status], fontSize: 13 }} />
+              </Tooltip>
+            )}
+          </Space>
+        )
+      },
     },
   ]
 
@@ -191,7 +232,7 @@ const RunOptimization: React.FC = () => {
       <Card bodyStyle={{ padding: '6px 16px' }} style={{ marginBottom: 8, flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <Space size={8}>
-            <span style={{ fontWeight: 500, fontSize: 13 }}>评价日期：</span>
+            <span style={{ fontWeight: 500, fontSize: 13 }}>查询日期：</span>
             <Button size="small" icon={<LeftOutlined />} onClick={() => setQueryDate(p => p.add(-1, 'day'))} />
             <DatePicker value={queryDate} onChange={v => v && setQueryDate(v)} size="small" allowClear={false} style={{ width: 130 }} />
             <Button size="small" icon={<RightOutlined />} onClick={() => setQueryDate(p => p.add(1, 'day'))} />
@@ -261,6 +302,7 @@ const RunOptimization: React.FC = () => {
               pagination={false}
               scroll={{ x: 1800, y: tableScrollY }}
               onRow={(record) => ({
+                onDoubleClick: () => navigate('/production-optimization', { state: { wellId: record.key } }),
                 onClick: () => handleSelectWell(record.key),
                 style: { cursor: 'pointer', background: record.key === selectedWellId ? '#e6f4ff' : undefined },
               })}

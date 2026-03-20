@@ -7,7 +7,6 @@ import {
   DashboardOutlined,
   MonitorOutlined,
   ThunderboltOutlined,
-  ExperimentOutlined,
   AppstoreOutlined,
   SafetyCertificateOutlined,
   SettingOutlined,
@@ -24,7 +23,6 @@ import {
   BuildOutlined,
   BookOutlined,
   BankOutlined,
-  ProfileOutlined,
 } from '@ant-design/icons'
 
 import Dashboard from './pages/Dashboard'
@@ -32,7 +30,6 @@ import RealtimeDiagnosis from './pages/RealtimeDiagnosis'
 import ComprehensiveDiagnosis from './pages/ComprehensiveDiagnosis'
 import CurrentSignalDiagnosis from './pages/CurrentSignalDiagnosis'
 import WorkConditionLibrary from './pages/WorkConditionLibrary'
-import LiquidMeasurement from './pages/LiquidMeasurement'
 import BigDataAnalysis from './pages/BigDataAnalysis'
 import NineZoneEvaluation from './pages/NineZoneEvaluation'
 import IndustryStandard from './pages/IndustryStandard'
@@ -43,7 +40,6 @@ import OptimizationSchemeManager from './pages/OptimizationSchemeManager'
 import OptimizationEffect from './pages/OptimizationEffect'
 import NewWellDesign from './pages/NewWellDesign'
 import PumpSelection from './pages/PumpSelection'
-import DesignSchemeManager from './pages/DesignSchemeManager'
 import { WorkOrderList, WorkOrderHistory } from './pages/WorkOrder'
 import OrgTree from './components/OrgTree'
 import { OrgProvider } from './contexts/OrgContext'
@@ -99,14 +95,7 @@ const menuItems: MenuProps['items'] = [
     children: [
       { key: '/new-well-design', icon: <PlusCircleOutlined />, label: '设计计算' },
       { key: '/pump-selection', icon: <ToolOutlined />, label: '泵型选型库' },
-      { key: '/design-schemes', icon: <ProfileOutlined />, label: '设计方案管理' },
     ],
-  },
-  { type: 'divider' },
-  {
-    key: '/liquid-measurement',
-    icon: <ExperimentOutlined />,
-    label: '产液计量',
   },
   { type: 'divider' },
   {
@@ -147,7 +136,7 @@ const App: React.FC = () => {
     if (['/realtime-diagnosis', '/comprehensive-diagnosis', '/current-signal'].includes(path)) return ['diagnosis']
     if (['/work-condition-library'].includes(path)) return ['data-manage']
     if (['/run-optimization', '/production-optimization', '/optimization-schemes', '/optimization-effect'].includes(path)) return ['optimization']
-    if (['/new-well-design', '/pump-selection', '/design-schemes'].includes(path)) return ['design']
+    if (['/new-well-design', '/pump-selection'].includes(path)) return ['design']
     if (['/big-data', '/nine-zone', '/industry-standard', '/evaluation-result'].includes(path)) return ['dynamic-eval']
     return []
   }
@@ -312,9 +301,7 @@ const App: React.FC = () => {
               {/* 新井设计 */}
               <Route path="/new-well-design" element={<NewWellDesign />} />
               <Route path="/pump-selection" element={<PumpSelection />} />
-              <Route path="/design-schemes" element={<DesignSchemeManager />} />
               {/* 其他 */}
-              <Route path="/liquid-measurement" element={<LiquidMeasurement />} />
               <Route path="/big-data" element={<BigDataAnalysis />} />
               <Route path="/nine-zone" element={<NineZoneEvaluation />} />
               <Route path="/industry-standard" element={<IndustryStandard />} />

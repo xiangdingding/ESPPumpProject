@@ -1,485 +1,234 @@
-import React, { useState, useMemo } from 'react'
-import { Row, Col, Card, Table, Tag, Statistic, Select, Space, DatePicker } from 'antd'
+﻿import React, { useState, useMemo, useEffect } from 'react'
+import { Row, Col, Card, Table, Tag, Statistic, Select, Space, DatePicker, Button, Empty, Modal, Input, message, Badge } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import {
   CheckCircleOutlined,
-  ThunderboltOutlined,
+
   RiseOutlined,
   DollarOutlined,
   FundOutlined,
   TrophyOutlined,
+  SyncOutlined,
+  StarOutlined,
 } from '@ant-design/icons'
 import ReactECharts from 'echarts-for-react'
-import { optimizationSchemes, wellList, type OptimizationScheme } from '../../mock/wellData'
+import { fetchOptExecs, advanceOptExec, STATUS_LABELS, STATUS_COLORS, RATING_LABELS, RATING_COLORS } from '../../api/optExecApi'
+import type { OptExecDTO, EvalRating } from '../../api/optExecApi'
 
 const { RangePicker } = DatePicker
-
-const ratingConfig: Record<string, { color: string; label: string }> = {
-  excellent: { color: 'green', label: '优秀' },
-  good: { color: 'blue', label: '良好' },
-  average: { color: 'orange', label: '一般' },
-  below: { color: 'red', label: '未达标' },
-}
 
 const seededRandom = (seed: number) => {
   const x = Math.sin(seed) * 10000
   return x - Math.floor(x)
 }
 
-const getActualFactor = (schemeId: string, metricIdx: number) => {
-  const seed = schemeId.charCodeAt(schemeId.length - 1) * 100 + metricIdx * 17
-  return 0.85 + seededRandom(seed) * 0.25
-}
-
-const getRating = (avgAchievement: number): string => {
-  if (avgAchievement >= 95) return 'excellent'
-  if (avgAchievement >= 80) return 'good'
-  if (avgAchievement >= 60) return 'average'
-  return 'below'
-}
-
 const OptimizationEffect: React.FC = () => {
-  const [wellFilter, setWellFilter] = useState<string>('all')
-  const [typeFilter, setTypeFilter] = useState<string>('all')
+  const [execs, setExecs] = useState<OptExecDTO[]>([])
+  const [loading, setLoading] = useState(false)
+  const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [evalModal, setEvalModal] = useState<{ visible: boolean; exec: OptExecDTO | null }>({ visible: false, exec: null })
+  const [evalRating, setEvalRating] = useState<string>('')
+  const [evalSummary, setEvalSummary] = useState('')
 
-  const activeSchemes = useMemo(() => {
-    return optimizationSchemes.filter(s => s.status === 'completed' || s.status === 'executing')
-  }, [])
+  const loadData = async () => {
+    setLoading(true)
+    try {
+      const data = await fetchOptExecs()
+      setExecs(data.filter(e => ['monitoring', 'completed', 'evaluated'].includes(e.status)))
+    } catch { message.error('加载数据失败') }
+    finally { setLoading(false) }
+  }
 
-  const types = useMemo(() => [...new Set(optimizationSchemes.map(s => s.type))], [])
+  useEffect(() => { loadData() }, [])
 
-  const filteredSchemes = useMemo(() => {
-    return activeSchemes.filter(s => {
-      if (wellFilter !== 'all' && s.wellId !== wellFilter) return false
-      if (typeFilter !== 'all' && s.type !== typeFilter) return false
-      return true
-    })
-  }, [activeSchemes, wellFilter, typeFilter])
-
-  const schemeDetails = useMemo(() => {
-    return filteredSchemes.map(scheme => {
-      const results = scheme.expectedResults.map((r, idx) => {
-        const factor = getActualFactor(scheme.id, idx)
-        const expectedChange = r.after - r.before
-        const actualChange = expectedChange * factor
-        const actualValue = r.before + actualChange
-        const expectedImprovement = Math.abs(expectedChange / r.before) * 100
-        const actualImprovement = Math.abs(actualChange / r.before) * 100
-        const achievement = expectedImprovement > 0 ? (actualImprovement / expectedImprovement) * 100 : 100
-        return {
-          ...r,
-          actualValue: Math.round(actualValue * 10) / 10,
-          actualImprovement: `${actualChange >= 0 ? '+' : ''}${actualImprovement.toFixed(1)}%`,
-          achievement: Math.round(achievement),
-        }
-      })
-      const avgAchievement = results.reduce((s, r) => s + r.achievement, 0) / results.length
-      return { ...scheme, results, avgAchievement, rating: getRating(avgAchievement) }
-    })
-  }, [filteredSchemes])
+  const filteredExecs = useMemo(() => {
+    if (statusFilter === 'all') return execs
+    return execs.filter(e => e.status === statusFilter)
+  }, [execs, statusFilter])
 
   const overallStats = useMemo(() => {
-    const completed = schemeDetails.filter(s => s.status === 'completed').length
-    let totalEnergySaving = 0
-    let totalProductionIncrease = 0
-    let totalBenefit = 0
-    let totalCost = 0
+    const completed = execs.filter(e => e.status === 'completed' || e.status === 'evaluated').length
+    const evaluated = execs.filter(e => e.status === 'evaluated').length
+    let totalLiquidIncrease = 0
 
-    schemeDetails.forEach(s => {
-      totalBenefit += s.benefitEstimate * (s.avgAchievement / 100)
-      totalCost += s.costEstimate
-      s.results.forEach(r => {
-        if (r.metric.includes('耗电')) {
-          totalEnergySaving += Math.abs(r.actualValue - r.before) * 365 / 10000
-        }
-        if (r.metric.includes('产液') || r.metric.includes('产油')) {
-          const change = r.actualValue - r.before
-          if (change > 0) totalProductionIncrease += change * 365
-        }
-      })
+    let excellentCount = 0
+
+    execs.forEach(e => {
+      if (e.liquid_actual > 0) totalLiquidIncrease += Math.max(0, e.liquid_actual - e.liquid_current)
+
+      if (e.eval_rating === 'excellent') excellentCount++
     })
 
-    const avgROI = totalCost > 0 ? totalBenefit / totalCost : 0
-    return {
-      completed,
-      energySaving: Math.round(totalEnergySaving * 10) / 10,
-      productionIncrease: Math.round(totalProductionIncrease),
-      totalBenefit: Math.round(totalBenefit / 10000 * 10) / 10,
-      avgROI: Math.round(avgROI * 10) / 10,
-    }
-  }, [schemeDetails])
+    return { completed, evaluated, totalLiquidIncrease: Math.round(totalLiquidIncrease * 10) / 10, excellentCount }
+  }, [execs])
 
   const comparisonChartOption = useMemo(() => {
-    const names = schemeDetails.map(s => `${s.id}\n${s.wellName}`)
-    const expectedData: number[] = []
-    const actualData: number[] = []
-
-    schemeDetails.forEach(s => {
-      const mainResult = s.results[0]
-      if (mainResult) {
-        const expectedPct = Math.abs((mainResult.after - mainResult.before) / mainResult.before * 100)
-        const actualPct = Math.abs((mainResult.actualValue - mainResult.before) / mainResult.before * 100)
-        expectedData.push(Math.round(expectedPct * 10) / 10)
-        actualData.push(Math.round(actualPct * 10) / 10)
-      }
-    })
-
+    const items = filteredExecs.filter(e => e.liquid_actual > 0)
+    if (items.length === 0) return {}
     return {
-      title: { text: '各方案主要指标预期 vs 实际效果', left: 'center', textStyle: { fontSize: 14 } },
+      title: { text: '各方案产液量预期 vs 实际对比', left: 'center', textStyle: { fontSize: 14 } },
       tooltip: { trigger: 'axis' as const },
-      legend: { bottom: 0, data: ['预期改善(%)', '实际改善(%)'] },
+      legend: { bottom: 0, data: ['预测产液量(m³/d)', '实际产液量(m³/d)'] },
       grid: { top: 50, bottom: 60, left: 60, right: 20 },
-      xAxis: { type: 'category' as const, data: names, axisLabel: { fontSize: 11, interval: 0 } },
-      yAxis: { type: 'value' as const, name: '改善幅度(%)', nameTextStyle: { fontSize: 11 } },
+      xAxis: { type: 'category' as const, data: items.map(e => `${e.id}\n${e.well_name}`), axisLabel: { fontSize: 10, interval: 0 } },
+      yAxis: { type: 'value' as const, name: '产液量(m³/d)', nameTextStyle: { fontSize: 11 } },
       series: [
-        { name: '预期改善(%)', type: 'bar' as const, data: expectedData, barWidth: 30, itemStyle: { color: '#1677ff', borderRadius: [4, 4, 0, 0] } },
-        { name: '实际改善(%)', type: 'bar' as const, data: actualData, barWidth: 30, itemStyle: { color: '#52c41a', borderRadius: [4, 4, 0, 0] } },
+        { name: '预测产液量(m³/d)', type: 'bar' as const, data: items.map(e => e.liquid_predict), barWidth: 30, itemStyle: { color: '#1677ff', borderRadius: [4, 4, 0, 0] } },
+        { name: '实际产液量(m³/d)', type: 'bar' as const, data: items.map(e => e.liquid_actual), barWidth: 30, itemStyle: { color: '#52c41a', borderRadius: [4, 4, 0, 0] } },
       ],
     }
-  }, [schemeDetails])
+  }, [filteredExecs])
 
   const trendChartOption = useMemo(() => {
     const days = 30
     const dates: string[] = []
     for (let i = days; i >= 0; i--) {
-      const d = new Date()
-      d.setDate(d.getDate() - i)
+      const d = new Date(); d.setDate(d.getDate() - i)
       dates.push(`${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getDate().toString().padStart(2, '0')}`)
     }
-
-    const efficiencyData = dates.map((_, i) => {
-      const base = 38 + (i / days) * 8
-      return Math.round((base + (seededRandom(i * 7) - 0.5) * 3) * 10) / 10
-    })
-    const productionData = dates.map((_, i) => {
-      const base = 42 + (i / days) * 12
-      return Math.round((base + (seededRandom(i * 13) - 0.5) * 4) * 10) / 10
-    })
-    const energyData = dates.map((_, i) => {
-      const base = 580 - (i / days) * 80
-      return Math.round((base + (seededRandom(i * 19) - 0.5) * 20) * 10) / 10
-    })
-
     const optimizationDay = Math.floor(days * 0.3)
-
+    const liquidData = dates.map((_, i) => {
+      const base = i < optimizationDay ? 42 : 42 + ((i - optimizationDay) / (days - optimizationDay)) * 15
+      return Math.round((base + (seededRandom(i * 7) - 0.5) * 4) * 10) / 10
+    })
+    const effData = dates.map((_, i) => {
+      const base = i < optimizationDay ? 38 : 38 + ((i - optimizationDay) / (days - optimizationDay)) * 10
+      return Math.round((base + (seededRandom(i * 13) - 0.5) * 3) * 10) / 10
+    })
     return {
       title: { text: '优化实施后关键指标变化趋势', left: 'center', textStyle: { fontSize: 14 } },
       tooltip: { trigger: 'axis' as const },
-      legend: { bottom: 0, data: ['泵效(%)', '日产液(t)', '日耗电(kWh)'] },
-      grid: { top: 50, bottom: 60, left: 60, right: 60 },
+      legend: { bottom: 0, data: ['日产液(m³/d)', '泵效(%)'] },
+      grid: { top: 50, bottom: 60, left: 60, right: 20 },
       xAxis: { type: 'category' as const, data: dates, axisLabel: { fontSize: 10 } },
-      yAxis: [
-        { type: 'value' as const, name: '泵效(%) / 产液(t)', nameTextStyle: { fontSize: 11 }, position: 'left' as const },
-        { type: 'value' as const, name: '耗电(kWh)', nameTextStyle: { fontSize: 11 }, position: 'right' as const },
-      ],
+      yAxis: { type: 'value' as const },
       series: [
-        {
-          name: '泵效(%)', type: 'line' as const, data: efficiencyData, smooth: true,
-          itemStyle: { color: '#1677ff' }, lineStyle: { width: 2 },
-          markLine: {
-            silent: true,
-            data: [{ xAxis: optimizationDay, label: { formatter: '优化实施', fontSize: 11 }, lineStyle: { color: '#ff4d4f', type: 'dashed' as const } }],
-          },
-        },
-        {
-          name: '日产液(t)', type: 'line' as const, data: productionData, smooth: true,
-          itemStyle: { color: '#52c41a' }, lineStyle: { width: 2 },
-        },
-        {
-          name: '日耗电(kWh)', type: 'line' as const, data: energyData, smooth: true, yAxisIndex: 1,
-          itemStyle: { color: '#fa8c16' }, lineStyle: { width: 2 },
-        },
+        { name: '日产液(m³/d)', type: 'line' as const, data: liquidData, smooth: true, itemStyle: { color: '#1677ff' }, lineStyle: { width: 2 },
+          markLine: { silent: true, data: [{ xAxis: optimizationDay, label: { formatter: '优化实施', fontSize: 11 }, lineStyle: { color: '#ff4d4f', type: 'dashed' as const } }] } },
+        { name: '泵效(%)', type: 'line' as const, data: effData, smooth: true, itemStyle: { color: '#52c41a' }, lineStyle: { width: 2 } },
       ],
     }
   }, [])
 
-  const productionCompareChartOption = useMemo(() => {
-    const days = 60
-    const dates: string[] = []
-    for (let i = days; i >= 0; i--) {
-      const d = new Date()
-      d.setDate(d.getDate() - i)
-      dates.push(`${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getDate().toString().padStart(2, '0')}`)
-    }
+  const openEvalModal = (exec: OptExecDTO) => {
+    setEvalModal({ visible: true, exec })
+    setEvalRating(exec.eval_rating || '')
+    setEvalSummary(exec.eval_summary || '')
+  }
 
-    const optimizeStartDay = 20
+  const doEvaluate = async () => {
+    if (!evalModal.exec) return
+    if (!evalRating) { message.warning('请选择效果评级'); return }
+    try {
+      const now = new Date().toISOString().replace('T', ' ').slice(0, 19)
+      const updated = await advanceOptExec(evalModal.exec.id, {
+        status: 'evaluated',
+        evaluated_at: now,
+        eval_rating: evalRating,
+        eval_summary: evalSummary.trim(),
+        log_action: '效果评价', log_operator: '当前用户',
+        log_detail: `评级：${RATING_LABELS[evalRating] || evalRating}，${evalSummary.trim()}`,
+      })
+      setExecs(prev => prev.map(e => e.id === updated.id ? updated : e))
+      setEvalModal({ visible: false, exec: null })
+      message.success('效果评价已提交')
+    } catch (err: any) { message.error(`评价失败：${err.message}`) }
+  }
 
-    const baseActualLiquid = 42
-    const baseActualOil = 14
-    const predictedLiquidTarget = 55
-    const predictedOilTarget = 20
-
-    const actualLiquidData = dates.map((_, i) => {
-      if (i < optimizeStartDay) {
-        return Math.round((baseActualLiquid + (seededRandom(i * 11) - 0.5) * 6) * 10) / 10
-      }
-      const progress = (i - optimizeStartDay) / (days - optimizeStartDay)
-      const rampUp = 1 - Math.exp(-3 * progress)
-      const target = baseActualLiquid + (predictedLiquidTarget - baseActualLiquid) * rampUp * 0.92
-      return Math.round((target + (seededRandom(i * 11) - 0.5) * 4) * 10) / 10
-    })
-
-    const actualOilData = dates.map((_, i) => {
-      if (i < optimizeStartDay) {
-        return Math.round((baseActualOil + (seededRandom(i * 23) - 0.5) * 3) * 10) / 10
-      }
-      const progress = (i - optimizeStartDay) / (days - optimizeStartDay)
-      const rampUp = 1 - Math.exp(-3 * progress)
-      const target = baseActualOil + (predictedOilTarget - baseActualOil) * rampUp * 0.88
-      return Math.round((target + (seededRandom(i * 23) - 0.5) * 2) * 10) / 10
-    })
-
-    const predictedLiquidData = dates.map((_, i) => {
-      if (i < optimizeStartDay) return null
-      const progress = (i - optimizeStartDay) / (days - optimizeStartDay)
-      const rampUp = 1 - Math.exp(-2.5 * progress)
-      return Math.round((baseActualLiquid + (predictedLiquidTarget - baseActualLiquid) * rampUp) * 10) / 10
-    })
-
-    const predictedOilData = dates.map((_, i) => {
-      if (i < optimizeStartDay) return null
-      const progress = (i - optimizeStartDay) / (days - optimizeStartDay)
-      const rampUp = 1 - Math.exp(-2.5 * progress)
-      return Math.round((baseActualOil + (predictedOilTarget - baseActualOil) * rampUp) * 10) / 10
-    })
-
-    return {
-      title: { text: '优化后实际生产 vs 预测产量对比', left: 'center', textStyle: { fontSize: 14 } },
-      tooltip: {
-        trigger: 'axis' as const,
-        axisPointer: { type: 'cross' as const },
+  const columns: ColumnsType<OptExecDTO> = [
+    { title: '记录ID', dataIndex: 'id', width: 110, render: (v: string) => <span style={{ fontFamily: 'monospace', fontWeight: 500 }}>{v}</span> },
+    { title: '井名', dataIndex: 'well_name', width: 110 },
+    { title: '方案', dataIndex: 'scheme_type', width: 80, render: (v: string) => <Tag color={v === '方案一' ? 'blue' : 'green'}>{v}</Tag> },
+    { title: '状态', dataIndex: 'status', width: 90, align: 'center', render: (s: string) => <Badge color={STATUS_COLORS[s as keyof typeof STATUS_COLORS]} text={<Tag color={STATUS_COLORS[s as keyof typeof STATUS_COLORS]}>{STATUS_LABELS[s as keyof typeof STATUS_LABELS]}</Tag>} /> },
+    { title: '当前产液', dataIndex: 'liquid_current', width: 100, align: 'center', render: (v: number) => `${v} m³/d` },
+    { title: '预测产液', dataIndex: 'liquid_predict', width: 100, align: 'center', render: (v: number) => <span style={{ color: '#1677ff' }}>{v} m³/d</span> },
+    {
+      title: '实际产液', dataIndex: 'liquid_actual', width: 100, align: 'center',
+      render: (v: number) => v > 0 ? <span style={{ color: '#52c41a', fontWeight: 600 }}>{v} m³/d</span> : '-',
+    },
+    {
+      title: '达标率', width: 80, align: 'center',
+      sorter: (a, b) => {
+        const ra = a.liquid_actual > 0 ? a.liquid_actual / a.liquid_predict * 100 : 0
+        const rb = b.liquid_actual > 0 ? b.liquid_actual / b.liquid_predict * 100 : 0
+        return ra - rb
       },
-      legend: {
-        bottom: 0,
-        data: ['实际日产液(t)', '预测日产液(t)', '实际日产油(t)', '预测日产油(t)'],
-      },
-      grid: { top: 50, bottom: 70, left: 60, right: 60 },
-      xAxis: {
-        type: 'category' as const,
-        data: dates,
-        axisLabel: { fontSize: 10, rotate: 30 },
-        boundaryGap: false,
-      },
-      yAxis: [
-        { type: 'value' as const, name: '日产液(t)', nameTextStyle: { fontSize: 11 }, position: 'left' as const },
-        { type: 'value' as const, name: '日产油(t)', nameTextStyle: { fontSize: 11 }, position: 'right' as const },
-      ],
-      series: [
-        {
-          name: '实际日产液(t)', type: 'line' as const, data: actualLiquidData, smooth: true,
-          itemStyle: { color: '#1677ff' }, lineStyle: { width: 2 },
-          symbol: 'circle', symbolSize: 3,
-          markLine: {
-            silent: true,
-            data: [{
-              xAxis: optimizeStartDay,
-              label: { formatter: '优化实施', fontSize: 11, position: 'insideStartTop' as const },
-              lineStyle: { color: '#ff4d4f', type: 'dashed' as const, width: 2 },
-            }],
-          },
-        },
-        {
-          name: '预测日产液(t)', type: 'line' as const, data: predictedLiquidData, smooth: true,
-          itemStyle: { color: '#1677ff' }, lineStyle: { width: 2, type: 'dashed' as const },
-          symbol: 'diamond', symbolSize: 4,
-        },
-        {
-          name: '实际日产油(t)', type: 'line' as const, data: actualOilData, smooth: true, yAxisIndex: 1,
-          itemStyle: { color: '#52c41a' }, lineStyle: { width: 2 },
-          symbol: 'circle', symbolSize: 3,
-        },
-        {
-          name: '预测日产油(t)', type: 'line' as const, data: predictedOilData, smooth: true, yAxisIndex: 1,
-          itemStyle: { color: '#52c41a' }, lineStyle: { width: 2, type: 'dashed' as const },
-          symbol: 'diamond', symbolSize: 4,
-        },
-      ],
-    }
-  }, [])
-
-  const economicChartOption = useMemo(() => {
-    const names = schemeDetails.map(s => `${s.id}`)
-    const costData = schemeDetails.map(s => Math.round(s.costEstimate / 10000 * 100) / 100)
-    const benefitData = schemeDetails.map(s => Math.round(s.benefitEstimate * (s.avgAchievement / 100) / 10000 * 100) / 100)
-
-    const cumulativeBenefit: number[] = []
-    let cumSum = 0
-    benefitData.forEach(b => {
-      cumSum += b
-      cumulativeBenefit.push(Math.round(cumSum * 100) / 100)
-    })
-
-    return {
-      title: { text: '经济效益分析', left: 'center', textStyle: { fontSize: 14 } },
-      tooltip: { trigger: 'axis' as const },
-      legend: { bottom: 0, data: ['成本(万元)', '实际收益(万元)', '累计收益(万元)'] },
-      grid: { top: 50, bottom: 60, left: 60, right: 60 },
-      xAxis: { type: 'category' as const, data: names, axisLabel: { fontSize: 11 } },
-      yAxis: [
-        { type: 'value' as const, name: '金额(万元)', nameTextStyle: { fontSize: 11 }, position: 'left' as const },
-        { type: 'value' as const, name: '累计(万元)', nameTextStyle: { fontSize: 11 }, position: 'right' as const },
-      ],
-      series: [
-        {
-          name: '成本(万元)', type: 'bar' as const, data: costData, barWidth: 25,
-          itemStyle: { color: '#ff4d4f', borderRadius: [4, 4, 0, 0] },
-        },
-        {
-          name: '实际收益(万元)', type: 'bar' as const, data: benefitData, barWidth: 25,
-          itemStyle: { color: '#52c41a', borderRadius: [4, 4, 0, 0] },
-        },
-        {
-          name: '累计收益(万元)', type: 'line' as const, data: cumulativeBenefit, yAxisIndex: 1,
-          smooth: true, itemStyle: { color: '#1677ff' }, lineStyle: { width: 2, type: 'dashed' as const },
-          areaStyle: { color: 'rgba(22,119,255,0.08)' },
-        },
-      ],
-    }
-  }, [schemeDetails])
-
-  const detailColumns: ColumnsType<(typeof schemeDetails)[0]> = [
-    {
-      title: '方案ID', dataIndex: 'id', width: 100,
-      render: (v: string) => <span style={{ fontFamily: 'monospace', fontWeight: 500 }}>{v}</span>,
-    },
-    { title: '井名', dataIndex: 'wellName', width: 110 },
-    {
-      title: '类型', dataIndex: 'type', width: 90,
-      render: (v: string) => <Tag color="cyan">{v}</Tag>,
-    },
-    {
-      title: '状态', dataIndex: 'status', width: 90, align: 'center',
-      render: (s: string) => (
-        <Tag color={s === 'completed' ? 'green' : 'orange'}>
-          {s === 'completed' ? '已完成' : '执行中'}
-        </Tag>
-      ),
-    },
-    {
-      title: '主要指标', width: 100,
-      render: (_: unknown, r: (typeof schemeDetails)[0]) => r.results[0]?.metric || '-',
-    },
-    {
-      title: '预期改善', width: 100, align: 'center',
-      render: (_: unknown, r: (typeof schemeDetails)[0]) => {
-        const res = r.results[0]
-        if (!res) return '-'
-        return <span style={{ color: '#1677ff' }}>{res.improvement}</span>
-      },
-    },
-    {
-      title: '实际改善', width: 100, align: 'center',
-      render: (_: unknown, r: (typeof schemeDetails)[0]) => {
-        const res = r.results[0]
-        if (!res) return '-'
-        return <span style={{ color: '#52c41a', fontWeight: 500 }}>{res.actualImprovement}</span>
-      },
-    },
-    {
-      title: '达标率', width: 90, align: 'center',
-      sorter: (a, b) => a.avgAchievement - b.avgAchievement,
-      render: (_: unknown, r: (typeof schemeDetails)[0]) => {
-        const pct = Math.round(r.avgAchievement)
-        let color = '#52c41a'
-        if (pct < 60) color = '#ff4d4f'
-        else if (pct < 80) color = '#fa8c16'
-        else if (pct < 95) color = '#1677ff'
+      render: (_: unknown, r: OptExecDTO) => {
+        if (r.liquid_actual <= 0) return '-'
+        const pct = Math.round(r.liquid_actual / r.liquid_predict * 100)
+        const color = pct >= 95 ? '#52c41a' : pct >= 80 ? '#1677ff' : pct >= 60 ? '#fa8c16' : '#ff4d4f'
         return <span style={{ color, fontWeight: 600 }}>{pct}%</span>
       },
     },
     {
-      title: '效果评级', width: 100, align: 'center',
-      sorter: (a, b) => a.avgAchievement - b.avgAchievement,
-      render: (_: unknown, r: (typeof schemeDetails)[0]) => {
-        const cfg = ratingConfig[r.rating]
-        return cfg ? <Tag color={cfg.color} icon={r.rating === 'excellent' ? <TrophyOutlined /> : undefined}>{cfg.label}</Tag> : '-'
+      title: '效果评级', dataIndex: 'eval_rating', width: 100, align: 'center',
+      render: (v: string) => {
+        if (!v) return '-'
+        return <Tag color={RATING_COLORS[v]} icon={v === 'excellent' ? <TrophyOutlined /> : undefined}>{RATING_LABELS[v]}</Tag>
+      },
+    },
+    {
+      title: '操作', width: 100, fixed: 'right', align: 'center',
+      render: (_: unknown, r: OptExecDTO) => {
+        if (r.status === 'completed') {
+          return <Button type="link" size="small" icon={<StarOutlined />} onClick={() => openEvalModal(r)}>评价</Button>
+        }
+        if (r.status === 'evaluated') {
+          return <Button type="link" size="small" icon={<FundOutlined />} onClick={() => openEvalModal(r)}>查看</Button>
+        }
+        return <Tag color="processing">监测中</Tag>
       },
     },
   ]
 
-  const expandedRowRender = (record: (typeof schemeDetails)[0]) => (
-    <Table
-      size="small"
-      pagination={false}
-      dataSource={record.results.map((r, i) => ({ ...r, key: i }))}
-      columns={[
-        { title: '指标', dataIndex: 'metric', width: 120 },
-        { title: '优化前', dataIndex: 'before', width: 100, align: 'center' as const, render: (v: number, r: { unit: string }) => `${v} ${r.unit}` },
-        { title: '预期值', dataIndex: 'after', width: 100, align: 'center' as const, render: (v: number, r: { unit: string }) => <span style={{ color: '#1677ff' }}>{v} {r.unit}</span> },
-        { title: '实际值', dataIndex: 'actualValue', width: 100, align: 'center' as const, render: (v: number, r: { unit: string }) => <span style={{ color: '#52c41a', fontWeight: 600 }}>{v} {r.unit}</span> },
-        { title: '预期改善', dataIndex: 'improvement', width: 100, align: 'center' as const },
-        { title: '实际改善', dataIndex: 'actualImprovement', width: 100, align: 'center' as const, render: (v: string) => <span style={{ fontWeight: 500 }}>{v}</span> },
-        {
-          title: '达标率', dataIndex: 'achievement', width: 100, align: 'center' as const,
-          render: (v: number) => {
-            let color = '#52c41a'
-            if (v < 60) color = '#ff4d4f'
-            else if (v < 80) color = '#fa8c16'
-            else if (v < 95) color = '#1677ff'
-            return <span style={{ color, fontWeight: 600 }}>{v}%</span>
-          },
-        },
-      ]}
-    />
-  )
-
   return (
     <div className="page-container" style={{ padding: 20, background: '#f0f2f5', minHeight: '100%' }}>
-      {/* 顶部筛选 */}
       <Card size="small" style={{ marginBottom: 16 }}>
         <Space wrap size={12}>
-          <Select value={wellFilter} onChange={setWellFilter} style={{ width: 160 }}
+          <Select value={statusFilter} onChange={setStatusFilter} style={{ width: 140 }}
             options={[
-              { value: 'all', label: '全部井' },
-              ...wellList.map(w => ({ value: w.id, label: w.name })),
+              { value: 'all', label: '全部状态' },
+              { value: 'monitoring', label: '监测中' },
+              { value: 'completed', label: '已完成' },
+              { value: 'evaluated', label: '已评价' },
             ]}
           />
-          <Select value={typeFilter} onChange={setTypeFilter} style={{ width: 140 }}
-            options={[{ value: 'all', label: '全部类型' }, ...types.map(t => ({ value: t, label: t }))]}
-          />
           <RangePicker style={{ width: 260 }} />
+          <Button icon={<SyncOutlined />} onClick={loadData} loading={loading}>刷新</Button>
         </Space>
       </Card>
 
-      {/* 总体效果统计 */}
       <Row gutter={16} style={{ marginBottom: 16 }}>
-        <Col span={5}>
+        <Col span={6}>
           <Card size="small" hoverable>
-            <Statistic title="已完成方案数" value={overallStats.completed}
-              prefix={<CheckCircleOutlined style={{ color: '#52c41a' }} />} valueStyle={{ color: '#52c41a' }} />
+            <Statistic title="已完成方案" value={overallStats.completed} prefix={<CheckCircleOutlined style={{ color: '#52c41a' }} />} valueStyle={{ color: '#52c41a' }} />
           </Card>
         </Col>
-        <Col span={5}>
+        <Col span={6}>
           <Card size="small" hoverable>
-            <Statistic title="累计节能量" value={overallStats.energySaving} suffix="万kWh"
-              prefix={<ThunderboltOutlined style={{ color: '#fa8c16' }} />} valueStyle={{ color: '#fa8c16' }} />
+            <Statistic title="已评价方案" value={overallStats.evaluated} prefix={<StarOutlined style={{ color: '#722ed1' }} />} valueStyle={{ color: '#722ed1' }} />
           </Card>
         </Col>
-        <Col span={5}>
+        <Col span={6}>
           <Card size="small" hoverable>
-            <Statistic title="累计增产量" value={overallStats.productionIncrease} suffix="t"
-              prefix={<RiseOutlined style={{ color: '#1677ff' }} />} valueStyle={{ color: '#1677ff' }} />
+            <Statistic title="平均增产量" value={overallStats.totalLiquidIncrease} suffix="m³/d" prefix={<RiseOutlined style={{ color: '#1677ff' }} />} valueStyle={{ color: '#1677ff' }} />
           </Card>
         </Col>
-        <Col span={5}>
+        <Col span={6}>
           <Card size="small" hoverable>
-            <Statistic title="累计经济效益" value={overallStats.totalBenefit} suffix="万元"
-              prefix={<DollarOutlined style={{ color: '#eb2f96' }} />} valueStyle={{ color: '#eb2f96' }} />
-          </Card>
-        </Col>
-        <Col span={4}>
-          <Card size="small" hoverable>
-            <Statistic title="平均投入产出比" value={`1:${overallStats.avgROI}`}
-              prefix={<FundOutlined style={{ color: '#722ed1' }} />} valueStyle={{ color: '#722ed1', fontSize: 22 }} />
+            <Statistic title="优秀方案数" value={overallStats.excellentCount} prefix={<TrophyOutlined style={{ color: '#eb2f96' }} />} valueStyle={{ color: '#eb2f96' }} />
           </Card>
         </Col>
       </Row>
 
-      {/* 效果对比图 + 趋势图 */}
       <Row gutter={16} style={{ marginBottom: 16 }}>
         <Col span={12}>
           <Card size="small">
-            <ReactECharts option={comparisonChartOption} style={{ height: 340 }} />
+            {filteredExecs.some(e => e.liquid_actual > 0) ? (
+              <ReactECharts option={comparisonChartOption} style={{ height: 340 }} />
+            ) : (
+              <Empty description="暂无实际产液数据" style={{ padding: 60 }} />
+            )}
           </Card>
         </Col>
         <Col span={12}>
@@ -489,27 +238,53 @@ const OptimizationEffect: React.FC = () => {
         </Col>
       </Row>
 
-      {/* 实际生产 vs 预测产量对比 */}
-      <Card size="small" style={{ marginBottom: 16 }}>
-        <ReactECharts option={productionCompareChartOption} style={{ height: 400 }} />
-      </Card>
-
-      {/* 方案效果明细 */}
-      <Card title={<Space><FundOutlined />方案效果明细</Space>} size="small" style={{ marginBottom: 16 }}>
-        <Table
-          columns={detailColumns}
-          dataSource={schemeDetails}
+      <Card title={<Space><FundOutlined />方案效果明细</Space>} size="small">
+        <Table<OptExecDTO>
+          columns={columns}
+          dataSource={filteredExecs}
           rowKey="id"
           size="small"
-          pagination={false}
-          expandable={{ expandedRowRender }}
+          loading={loading}
+          scroll={{ x: 1200 }}
+          pagination={{ pageSize: 10, showTotal: t => `共 ${t} 条` }}
         />
       </Card>
 
-      {/* 经济效益分析 */}
-      <Card size="small">
-        <ReactECharts option={economicChartOption} style={{ height: 360 }} />
-      </Card>
+      <Modal
+        title="优化效果评价"
+        open={evalModal.visible}
+        onCancel={() => setEvalModal({ visible: false, exec: null })}
+        onOk={doEvaluate}
+        okText={evalModal.exec?.status === 'evaluated' ? '更新评价' : '提交评价'}
+        width={480}
+      >
+        {evalModal.exec && (
+          <div style={{ fontSize: 13, lineHeight: 2 }}>
+            <p><strong>井名：</strong>{evalModal.exec.well_name}</p>
+            <p><strong>方案：</strong><Tag color={evalModal.exec.scheme_type === '方案一' ? 'blue' : 'green'}>{evalModal.exec.scheme_type}</Tag>{evalModal.exec.scheme_desc}</p>
+            <p><strong>产液量：</strong>{evalModal.exec.liquid_current} → 预测 {evalModal.exec.liquid_predict} → 实际 <span style={{ color: '#52c41a', fontWeight: 600 }}>{evalModal.exec.liquid_actual || '待录入'}</span> m³/d</p>
+            {evalModal.exec.liquid_actual > 0 && (
+              <p><strong>达标率：</strong><span style={{ fontWeight: 600, color: '#1677ff' }}>{Math.round(evalModal.exec.liquid_actual / evalModal.exec.liquid_predict * 100)}%</span></p>
+            )}
+            <div style={{ margin: '8px 0' }}>
+              <strong>效果评级：</strong>
+              <Select value={evalRating || undefined} onChange={setEvalRating} style={{ width: 160, marginLeft: 8 }} placeholder="请选择评级"
+                options={[
+                  { value: 'excellent', label: '优秀（≥95%）' },
+                  { value: 'good', label: '良好（80-95%）' },
+                  { value: 'average', label: '一般（60-80%）' },
+                  { value: 'below', label: '未达标（<60%）' },
+                ]}
+              />
+            </div>
+            <div style={{ margin: '8px 0' }}>
+              <strong>评价摘要：</strong>
+              <Input.TextArea rows={3} maxLength={500} showCount placeholder="请填写评价摘要"
+                value={evalSummary} onChange={e => setEvalSummary(e.target.value)} style={{ marginTop: 4 }} />
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   )
 }
