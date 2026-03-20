@@ -173,7 +173,7 @@ const CurrentSignalDiagnosis: React.FC = () => {
     vals.push(vals[0])
     return {
       title: { text: '电流日卡片', left: 'center', top: 4, textStyle: { fontSize: 13, color: '#1677ff' } },
-      polar: { radius: ['8%', '68%'], center: ['50%', '54%'] },
+      polar: { radius: ['8%', '58%'], center: ['50%', '56%'] },
       angleAxis: {
         type: 'category' as const, data: hourLabels, boundaryGap: false, startAngle: 90,
         axisLine: { lineStyle: { color: '#999' } }, axisLabel: { fontSize: 10, color: '#666' },
@@ -205,7 +205,7 @@ const CurrentSignalDiagnosis: React.FC = () => {
     vals.push(vals[0])
     return {
       title: { text: '电流周卡片', left: 'center', top: 4, textStyle: { fontSize: 13, color: '#1677ff' } },
-      polar: { radius: ['8%', '68%'], center: ['50%', '54%'] },
+      polar: { radius: ['8%', '58%'], center: ['50%', '56%'] },
       angleAxis: {
         type: 'category' as const, data: labels, boundaryGap: false, startAngle: 90,
         axisLine: { lineStyle: { color: '#999' } }, axisLabel: { fontSize: 10, color: '#666' },
@@ -235,8 +235,8 @@ const CurrentSignalDiagnosis: React.FC = () => {
     return {
       title: { text: `${selectedWell.name} 电流变化趋势曲线`, left: 'center', top: 4, textStyle: { fontSize: 13, color: '#1677ff' } },
       tooltip: { trigger: 'axis' as const, formatter: (p: any) => `${p[0].axisValue}<br/>泵电流: ${p[0].data} A` },
-      grid: { left: 55, right: 20, top: 40, bottom: 40 },
-      xAxis: { type: 'category' as const, data: trendData.map(d => d.time), axisLabel: { fontSize: 10, rotate: 30 } },
+      grid: { left: 55, right: 20, top: 40, bottom: 56 },
+      xAxis: { type: 'category' as const, data: trendData.map(d => d.time), axisLabel: { fontSize: 10, rotate: 30, interval: Math.max(0, Math.floor(trendData.length / 8) - 1) } },
       yAxis: { type: 'value' as const, name: '泵电流(A)', axisLabel: { fontSize: 10 } },
       dataZoom: [{ type: 'inside' as const }, { type: 'slider' as const, height: 14, bottom: 4 }],
       series: [{
