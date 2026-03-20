@@ -1,272 +1,297 @@
-import React, { useState, useMemo } from 'react'
-import { Row, Col, Card, Table, Tag, Statistic, Steps, Empty, Space, Divider } from 'antd'
-import type { ColumnsType } from 'antd/es/table'
-import {
-  AlertOutlined,
-  ThunderboltOutlined,
-  RiseOutlined,
-  ToolOutlined,
-  ExperimentOutlined,
-  CheckCircleOutlined,
-  ClockCircleOutlined,
-} from '@ant-design/icons'
-import ReactECharts from 'echarts-for-react'
-import { wellList, optimizationSuggestions } from '../../mock/wellData'
+import React, { useState, useMemo, useEffect, useRef } from 'react'
+import { Card, Tag, Badge, DatePicker, Button, Space, Table, Input, Empty, message } from 'antd'
+import { SearchOutlined, ExportOutlined, LeftOutlined, RightOutlined, ThunderboltOutlined } from '@ant-design/icons'
+import { useNavigate } from 'react-router-dom'
+import dayjs from 'dayjs'
+import type { Dayjs } from 'dayjs'
+import { assignWellStatus, generateWellParams } from '../../mock/wellData'
+import type { WellInfo } from '../../mock/wellData'
+import type { DbWell } from '../../mock/wellDbData'
+import { useOrgContext } from '../../contexts/OrgContext'
 
-const priorityConfig: Record<string, { color: string; label: string }> = {
-  urgent: { color: '#ff4d4f', label: '紧急' },
-  high: { color: '#fa8c16', label: '高' },
-  medium: { color: '#fadb14', label: '中' },
-  low: { color: '#52c41a', label: '低' },
+const statusColorMap: Record<string, 'success' | 'warning' | 'error' | 'default'> = {
+  normal: 'success', warning: 'warning', alarm: 'error', offline: 'default',
+}
+const statusTextMap: Record<string, string> = {
+  normal: '正常运行', warning: '预警', alarm: '报警', offline: '离线',
+}
+const diagnosisTypeMap: Record<string, string> = {
+  C01: '气体影响', C02: '气锁', C03: '稠油及乳化', C04: '叶轮磨损',
+  C05: '供液不足', C06: '运行正常', C07: '泵内堵塞', C08: '泵入口堵',
+  C09: '泵反转', C10: '出砂', C11: '轴断', C12: '管柱漏失',
+}
+
+function convertDbWell(dbWell: DbWell): WellInfo {
+  const wellId = String(dbWell.Well_Id || '')
+  const { workConditionCode, status } = assignWellStatus(wellId)
+  const params = generateWellParams(wellId, status, workConditionCode)
+  return {
+    id: wellId, name: String(dbWell.Well_Name || ''), oilField: String(dbWell.Oil_Field || ''),
+    block: String(dbWell.Block_Name || ''), lng: 0, lat: 0, workConditionCode, status,
+    depth: Number(dbWell.Well_Depth || 0), pumpDepth: Number(dbWell.Pump_Depth || 0),
+    casingPressure: status === 'offline' ? 0 : Math.round((2 + Math.random() * 3) * 10) / 10,
+    tubingPressure: status === 'offline' ? 0 : Math.round((1 + Math.random() * 2) * 10) / 10,
+    dailyLiquid: params.dailyLiquid, dailyOil: params.dailyOil, waterCut: params.waterCut,
+    frequency: params.frequency, current: params.current, voltage: params.voltage,
+    power: params.power, temperature: params.temperature, vibration: params.vibration,
+    efficiency: params.efficiency,
+    runDays: status === 'offline' ? 0 : Math.round(50 + Math.random() * 800),
+    lastMaintenance: '2025-06-15', submergence: params.submergence,
+    gasOilRatio: params.gasOilRatio, dynamicLevel: params.dynamicLevel,
+    pumpModel: String(dbWell.Pump_Model || 'TD500-200'), motorPower: Number(dbWell.Motor_Power || 45),
+    stages: 200, cableSpec: '3×16mm²', separatorType: '旋转气体分离器', pumpType: 'ESP',
+  }
+}
+
+function seededRand(seed: number) {
+  const x = Math.sin(seed) * 10000
+  return x - Math.floor(x)
+}
+
+interface WellRow {
+  key: string
+  name: string
+  date: string
+  dailyLiquid: number
+  oilPressure: number
+  backPressure: number
+  chokeSize: number
+  frequency: number
+  pumpOutletPressure: number
+  pumpInletPressure: number
+  wellheadTemp: number
+  pumpCurrent: number
+  pumpVoltage: number
+  prodHours: number
+  pumpEfficiency: number
+  optScheme: string
+}
+
+function genWellRow(w: WellInfo, dateStr: string): WellRow {
+  const seed = w.id.charCodeAt(0) * 7 + w.id.charCodeAt(w.id.length - 1)
+  const r = seededRand(seed)
+  return {
+    key: w.id, name: w.name, date: dateStr,
+    dailyLiquid: w.dailyLiquid,
+    oilPressure: Math.round((0.6 + r * 1.2) * 100) / 100,
+    backPressure: Math.round(((0.6 + r * 1.2) * (0.6 + seededRand(seed + 1) * 0.5)) * 100) / 100,
+    chokeSize: Math.round((5 + seededRand(seed + 2) * 12) * 10) / 10,
+    frequency: w.frequency,
+    pumpOutletPressure: Math.round((10 + seededRand(seed + 3) * 10) * 100) / 100,
+    pumpInletPressure: Math.round((3 + seededRand(seed + 4) * 8) * 100) / 100,
+    wellheadTemp: Math.round(40 + seededRand(seed + 5) * 40),
+    pumpCurrent: w.current, pumpVoltage: w.voltage,
+    prodHours: 24,
+    pumpEfficiency: w.efficiency,
+    optScheme: '生产调优化',
+  }
 }
 
 const RunOptimization: React.FC = () => {
-  const [selectedIdx, setSelectedIdx] = useState<number>(0)
+  const navigate = useNavigate()
+  const { selectedOrg, filteredDbWells } = useOrgContext()
+  const [selectedWellId, setSelectedWellId] = useState<string | null>(null)
+  const [wellSearch, setWellSearch] = useState('')
+  const [queryDate, setQueryDate] = useState<Dayjs>(dayjs())
 
-  const selected = optimizationSuggestions[selectedIdx]
-  const selectedWell = wellList.find(w => w.id === selected.wellId)
+  const convertedMap = useMemo(() => {
+    const map = new Map<string, WellInfo>()
+    filteredDbWells.forEach(dbw => { const w = convertDbWell(dbw); map.set(w.id, w) })
+    return map
+  }, [filteredDbWells])
 
-  const urgentCount = optimizationSuggestions.filter(s => s.priority === 'urgent').length
-  const estimatedSaving = useMemo(() => {
-    return optimizationSuggestions.reduce((sum, s) => {
-      const well = wellList.find(w => w.id === s.wellId)
-      return sum + (well ? well.power * 0.12 : 0)
-    }, 0)
-  }, [])
-  const estimatedProduction = useMemo(() => {
-    return optimizationSuggestions.filter(s => s.type === '增产建议').reduce((sum, s) => {
-      const match = s.expectedImprovement.match(/日产油增加(\d+)/)
-      return sum + (match ? parseInt(match[1]) : 0)
-    }, 0)
-  }, [])
+  const activeWells = useMemo(() => Array.from(convertedMap.values()).filter(w => w.status !== 'offline'), [convertedMap])
+  const needOptWells = useMemo(() => {
+    const statusOrder: Record<string, number> = { alarm: 0, warning: 1, normal: 2, offline: 3 }
+    return [...activeWells.filter(w => w.workConditionCode !== 'C06')]
+      .sort((a, b) => (statusOrder[a.status] ?? 9) - (statusOrder[b.status] ?? 9))
+  }, [activeWells])
 
-  const columns: ColumnsType<typeof optimizationSuggestions[0]> = [
-    { title: '井号', dataIndex: 'wellName', width: 120 },
-    { title: '优化类型', dataIndex: 'type', width: 100, render: (v: string) => <Tag color="blue">{v}</Tag> },
-    {
-      title: '优先级', dataIndex: 'priority', width: 90, align: 'center',
-      sorter: (a, b) => {
-        const order = { urgent: 0, high: 1, medium: 2, low: 3 }
-        return (order[a.priority as keyof typeof order] ?? 4) - (order[b.priority as keyof typeof order] ?? 4)
-      },
-      render: (p: string) => {
-        const cfg = priorityConfig[p]
-        return cfg ? <Tag color={cfg.color}>{cfg.label}</Tag> : p
-      },
-    },
-    { title: '当前值', dataIndex: 'currentValue', width: 120 },
-    { title: '建议值', dataIndex: 'suggestedValue', width: 120 },
-    { title: '预期改善', dataIndex: 'expectedImprovement', ellipsis: true },
-    { title: '原因', dataIndex: 'reason', ellipsis: true },
-  ]
+  const filteredOptWells = useMemo(() => {
+    if (!wellSearch.trim()) return needOptWells
+    const kw = wellSearch.trim().toLowerCase()
+    return needOptWells.filter(w => w.name.toLowerCase().includes(kw) || w.id.toLowerCase().includes(kw))
+  }, [needOptWells, wellSearch])
 
-  const compareOption = selectedWell ? {
-    tooltip: { trigger: 'axis' },
-    legend: { data: ['当前值', '优化后'], bottom: 0 },
-    grid: { top: 30, right: 20, bottom: 50, left: 60 },
-    xAxis: { type: 'category', data: ['频率(Hz)', '电流(A)', '功率(kW)', '温度(°C)', '振动(mm/s)'] },
-    yAxis: { type: 'value' },
-    series: [
-      {
-        name: '当前值', type: 'bar', barWidth: 30,
-        data: [selectedWell.frequency, selectedWell.current, selectedWell.power, selectedWell.temperature, selectedWell.vibration],
-        itemStyle: { color: '#ff7875' },
-      },
-      {
-        name: '优化后', type: 'bar', barWidth: 30,
-        data: [
-          selectedWell.frequency * 0.85,
-          selectedWell.current * 0.88,
-          selectedWell.power * 0.82,
-          selectedWell.temperature * 0.9,
-          selectedWell.vibration * 0.7,
-        ].map(v => Math.round(v * 10) / 10),
-        itemStyle: { color: '#52c41a' },
-      },
-    ],
-  } : {}
+  const tableRef = useRef<HTMLDivElement>(null)
+  const [tableScrollY, setTableScrollY] = useState<number>(400)
 
-  const effectOption = useMemo(() => {
-    const days = Array.from({ length: 30 }, (_, i) => `第${i + 1}天`)
-    const baseEff = selectedWell?.efficiency || 40
-    return {
-      tooltip: { trigger: 'axis' },
-      legend: { data: ['泵效(%)', '产液量(t/d)'], bottom: 0 },
-      grid: { top: 30, right: 60, bottom: 50, left: 60 },
-      xAxis: { type: 'category', data: days },
-      yAxis: [
-        { type: 'value', name: '泵效(%)', min: 0, max: 80 },
-        { type: 'value', name: '产液量(t/d)', min: 0, max: 100 },
-      ],
-      series: [
-        {
-          name: '泵效(%)', type: 'line', smooth: true,
-          data: days.map((_, i) => Math.round((baseEff + Math.min(15, i * 0.6) + (Math.random() - 0.5) * 3) * 10) / 10),
-          itemStyle: { color: '#1677ff' },
-        },
-        {
-          name: '产液量(t/d)', type: 'line', smooth: true, yAxisIndex: 1,
-          data: days.map((_, i) => {
-            const base = selectedWell?.dailyLiquid || 40
-            return Math.round((base + Math.min(10, i * 0.4) + (Math.random() - 0.5) * 2) * 10) / 10
-          }),
-          itemStyle: { color: '#fa8c16' },
-        },
-      ],
+  useEffect(() => {
+    setWellSearch('')
+    if (needOptWells.length > 0) setSelectedWellId(needOptWells[0].id)
+    else setSelectedWellId(null)
+  }, [filteredDbWells])
+
+  useEffect(() => {
+    const el = tableRef.current
+    if (!el) return
+    const calc = () => {
+      const cardHead = el.querySelector('.ant-card-head') as HTMLElement | null
+      const headH = cardHead?.offsetHeight || 38
+      const available = el.offsetHeight - headH - 2
+      if (available > 100) setTableScrollY(available)
     }
-  }, [selectedWell])
+    calc()
+    const ro = new ResizeObserver(calc)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
 
-  const freqOption = useMemo(() => {
-    const freqs = Array.from({ length: 21 }, (_, i) => 30 + i)
-    return {
-      tooltip: { trigger: 'axis' },
-      legend: { data: ['泵效(%)', '产液量(t/d)'], bottom: 0 },
-      grid: { top: 30, right: 60, bottom: 50, left: 60 },
-      xAxis: { type: 'category', data: freqs.map(f => `${f}Hz`), name: '频率' },
-      yAxis: [
-        { type: 'value', name: '泵效(%)', min: 0, max: 70 },
-        { type: 'value', name: '产液量(t/d)', min: 0, max: 100 },
-      ],
-      series: [
-        {
-          name: '泵效(%)', type: 'line', smooth: true,
-          data: freqs.map(f => {
-            const peak = 40
-            return Math.round((55 - 0.08 * (f - peak) ** 2 + (Math.random() - 0.5) * 2) * 10) / 10
-          }),
-          itemStyle: { color: '#1677ff' },
-          markLine: {
-            data: [{ xAxis: selectedWell ? `${selectedWell.frequency}Hz` : '42Hz', name: '当前频率' }],
-            label: { formatter: '当前频率' },
-            lineStyle: { color: '#ff4d4f', type: 'dashed' },
-          },
-        },
-        {
-          name: '产液量(t/d)', type: 'line', smooth: true, yAxisIndex: 1,
-          data: freqs.map(f => Math.round((f * 1.8 - 20 + (Math.random() - 0.5) * 3) * 10) / 10),
-          itemStyle: { color: '#fa8c16' },
-        },
-      ],
-    }
-  }, [selectedWell])
-
-  const energyOption = {
-    tooltip: { trigger: 'axis' },
-    legend: { data: ['优化前(kWh/t)', '优化后(kWh/t)'], bottom: 0 },
-    grid: { top: 30, right: 20, bottom: 50, left: 60 },
-    xAxis: {
-      type: 'category',
-      data: optimizationSuggestions.map(s => s.wellName),
-      axisLabel: { rotate: 20 },
-    },
-    yAxis: { type: 'value', name: '单位能耗(kWh/t)' },
-    series: [
-      {
-        name: '优化前(kWh/t)', type: 'bar', barWidth: 24,
-        data: optimizationSuggestions.map(s => {
-          const w = wellList.find(wl => wl.id === s.wellId)
-          return w && w.dailyLiquid > 0 ? Math.round(w.power * 24 / w.dailyLiquid * 10) / 10 : 0
-        }),
-        itemStyle: { color: '#ff7875' },
-      },
-      {
-        name: '优化后(kWh/t)', type: 'bar', barWidth: 24,
-        data: optimizationSuggestions.map(s => {
-          const w = wellList.find(wl => wl.id === s.wellId)
-          return w && w.dailyLiquid > 0 ? Math.round(w.power * 24 / w.dailyLiquid * 0.82 * 10) / 10 : 0
-        }),
-        itemStyle: { color: '#52c41a' },
-      },
-    ],
+  const handleSelectWell = (wellId: string) => {
+    setSelectedWellId(wellId)
+    requestAnimationFrame(() => {
+      const row = tableRef.current?.querySelector(`tr[data-row-key="${wellId}"]`) as HTMLElement | null
+      row?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    })
   }
 
-  const stepsItems = [
-    { title: '诊断分析', description: '确认工况问题与优化方向' },
-    { title: '方案制定', description: '确定参数调整范围与目标' },
-    { title: '模拟验证', description: '数值模拟验证优化效果' },
-    { title: '现场实施', description: '按方案调整运行参数' },
-    { title: '效果跟踪', description: '持续监测优化后运行数据' },
+  const dateStr = queryDate.format('YYYY-MM-DD')
+  const tableData = useMemo(() => needOptWells.map(w => genWellRow(w, dateStr)), [needOptWells, dateStr])
+
+  const orgName = selectedOrg?.name || 'CNPCIC'
+
+  const mainColumns = [
+    { title: '序号', key: 'idx', width: 50, align: 'center' as const, fixed: 'left' as const,
+      render: (_: any, __: any, i: number) => <span style={{ color: '#999' }}>{i + 1}</span> },
+    { title: '井号', dataIndex: 'name', key: 'name', width: 110, ellipsis: true, fixed: 'left' as const,
+      render: (v: string) => <span style={{ fontWeight: 500 }}>{v}</span> },
+    { title: '日期', dataIndex: 'date', key: 'date', width: 95, fixed: 'left' as const },
+    { title: '日产液量(m³)', dataIndex: 'dailyLiquid', key: 'dl', width: 95, align: 'center' as const,
+      sorter: (a: WellRow, b: WellRow) => a.dailyLiquid - b.dailyLiquid },
+    { title: '油压(MPa)', dataIndex: 'oilPressure', key: 'op', width: 80, align: 'center' as const },
+    { title: '回压(MPa)', dataIndex: 'backPressure', key: 'bp', width: 80, align: 'center' as const },
+    { title: '油嘴开度(mm)', dataIndex: 'chokeSize', key: 'cs', width: 95, align: 'center' as const },
+    { title: '泵频率(Hz)', dataIndex: 'frequency', key: 'freq', width: 80, align: 'center' as const },
+    { title: '泵出口压力(MPa)', dataIndex: 'pumpOutletPressure', key: 'pop', width: 115, align: 'center' as const },
+    { title: '泵入口压力(MPa)', dataIndex: 'pumpInletPressure', key: 'pip', width: 115, align: 'center' as const },
+    { title: '井口温度(°C)', dataIndex: 'wellheadTemp', key: 'wt', width: 90, align: 'center' as const },
+    { title: '泵电流(A)', dataIndex: 'pumpCurrent', key: 'pc', width: 80, align: 'center' as const },
+    { title: '泵电压(V)', dataIndex: 'pumpVoltage', key: 'pv', width: 80, align: 'center' as const },
+    { title: '产时(h)', dataIndex: 'prodHours', key: 'ph', width: 65, align: 'center' as const },
+    { title: '泵效率(%)', dataIndex: 'pumpEfficiency', key: 'pe', width: 80, align: 'center' as const,
+      sorter: (a: WellRow, b: WellRow) => a.pumpEfficiency - b.pumpEfficiency,
+      render: (v: number) => {
+        const color = v >= 60 ? '#52c41a' : v >= 40 ? '#faad14' : '#ff4d4f'
+        return <span style={{ color, fontWeight: 500 }}>{v}</span>
+      },
+    },
+    { title: '操作', key: 'action', width: 110, align: 'center' as const, fixed: 'right' as const,
+      render: (_: any, row: WellRow) => (
+        <Button
+          size="small" type="link" icon={<ThunderboltOutlined />}
+          style={{ fontSize: 11, padding: '0 4px' }}
+          onClick={() => navigate('/production-optimization', { state: { wellId: row.key } })}
+        >生产协调优化</Button>
+      )
+    },
   ]
 
   return (
-    <div className="page-container">
-      <Row gutter={[16, 16]}>
-        {[
-          { title: '待优化井数', value: optimizationSuggestions.length, icon: <ToolOutlined />, color: '#1677ff', suffix: '口' },
-          { title: '紧急优化', value: urgentCount, icon: <AlertOutlined />, color: '#ff4d4f', suffix: '口' },
-          { title: '预计节能量', value: Math.round(estimatedSaving), icon: <ThunderboltOutlined />, color: '#52c41a', suffix: 'kWh/d' },
-          { title: '预计增产量', value: estimatedProduction, icon: <RiseOutlined />, color: '#fa8c16', suffix: 't/d' },
-        ].map(item => (
-          <Col xs={12} sm={12} md={6} key={item.title}>
-            <Card className="stat-card" hoverable>
-              <Statistic title={item.title} value={item.value} suffix={item.suffix} prefix={item.icon} valueStyle={{ color: item.color, fontWeight: 600 }} />
-            </Card>
-          </Col>
-        ))}
-      </Row>
-
-      <Card title="优化建议列表" className="chart-card" style={{ marginTop: 16 }}>
-        <Table
-          columns={columns}
-          dataSource={optimizationSuggestions}
-          rowKey="wellId"
-          size="middle"
-          pagination={false}
-          onRow={(_, index) => ({
-            onClick: () => setSelectedIdx(index ?? 0),
-            style: { cursor: 'pointer', background: index === selectedIdx ? '#e6f4ff' : undefined },
-          })}
-        />
+    <div className="page-container" style={{ height: 'calc(100vh - 64px)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <Card bodyStyle={{ padding: '6px 16px' }} style={{ marginBottom: 8, flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Space size={8}>
+            <span style={{ fontWeight: 500, fontSize: 13 }}>评价日期：</span>
+            <Button size="small" icon={<LeftOutlined />} onClick={() => setQueryDate(p => p.add(-1, 'day'))} />
+            <DatePicker value={queryDate} onChange={v => v && setQueryDate(v)} size="small" allowClear={false} style={{ width: 130 }} />
+            <Button size="small" icon={<RightOutlined />} onClick={() => setQueryDate(p => p.add(1, 'day'))} />
+            <Button type="primary" size="small" icon={<SearchOutlined />}>查询</Button>
+            <span style={{ fontSize: 12, color: '#999', marginLeft: 4 }}>
+              需优化 <span style={{ color: '#ff4d4f', fontWeight: 600 }}>{needOptWells.length}</span> 口井
+            </span>
+          </Space>
+          <Button size="small" icon={<ExportOutlined />} onClick={() => message.success('数据已导出')}>导出数据</Button>
+        </div>
       </Card>
 
-      <Card
-        title={<Space><ExperimentOutlined />优化方案详情 — {selected.wellName}</Space>}
-        className="chart-card"
-        style={{ marginTop: 16 }}
-      >
-        {selectedWell ? (
-          <>
-            <Row gutter={[16, 16]}>
-              <Col xs={24} md={12}>
-                <Card type="inner" title="参数调整前后对比" size="small">
-                  <ReactECharts option={compareOption} style={{ height: 300 }} />
-                </Card>
-              </Col>
-              <Col xs={24} md={12}>
-                <Card type="inner" title="预期效果曲线" size="small">
-                  <ReactECharts option={effectOption} style={{ height: 300 }} />
-                </Card>
-              </Col>
-            </Row>
-            <Divider />
-            <Card type="inner" title="实施步骤" size="small">
-              <Steps
-                current={0}
-                items={stepsItems.map((s, i) => ({
-                  title: s.title,
-                  description: s.description,
-                  icon: i === 0 ? <ClockCircleOutlined /> : <CheckCircleOutlined />,
-                }))}
-              />
-            </Card>
-          </>
-        ) : (
-          <Empty description="未找到对应井数据" />
-        )}
-      </Card>
+      <div style={{ flex: 1, display: 'flex', gap: 8, overflow: 'hidden', minHeight: 0 }}>
+        <Card
+          bodyStyle={{ padding: 0, display: 'flex', flexDirection: 'column', height: '100%' }}
+          style={{ width: 160, flexShrink: 0, overflow: 'hidden' }}
+          size="small"
+          title={<span style={{ fontSize: 12 }}>需优化井 {selectedOrg && <Tag color="blue" style={{ fontSize: 10 }}>{selectedOrg.name}</Tag>}</span>}
+        >
+          <div style={{ padding: '6px 8px', borderBottom: '1px solid #f0f0f0' }}>
+            <Input placeholder="搜索井号..." prefix={<SearchOutlined style={{ color: '#bfbfbf' }} />}
+              value={wellSearch} onChange={e => setWellSearch(e.target.value)} allowClear size="small" style={{ fontSize: 12 }} />
+          </div>
+          <div style={{ overflowY: 'auto', flex: 1 }}>
+            {filteredOptWells.length === 0 ? (
+              <Empty description="暂无需优化井" style={{ padding: 16 }} image={Empty.PRESENTED_IMAGE_SIMPLE} />
+            ) : (
+              filteredOptWells.map(w => {
+                const isSel = w.id === selectedWellId
+                return (
+                  <div key={w.id} onClick={() => handleSelectWell(w.id)}
+                    style={{
+                      padding: '10px 16px', cursor: 'pointer',
+                      borderLeft: isSel ? '3px solid #1677ff' : '3px solid transparent',
+                      background: isSel ? '#e6f4ff' : 'transparent', transition: 'all 0.2s',
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      borderBottom: '1px solid #f0f0f0',
+                    }}
+                  >
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ fontWeight: 500, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {w.name}
+                      </div>
+                      <div style={{ fontSize: 11, color: '#8c8c8c', marginTop: 2 }}>
+                        {diagnosisTypeMap[w.workConditionCode] || '异常'}
+                      </div>
+                    </div>
+                    <Badge status={statusColorMap[w.status]} text={statusTextMap[w.status]} />
+                  </div>
+                )
+              })
+            )}
+          </div>
+        </Card>
 
-      <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
-        <Col xs={24} md={12}>
-          <Card title="频率优化曲线" className="chart-card">
-            <ReactECharts option={freqOption} style={{ height: 350 }} />
+        <div ref={tableRef} style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}>
+          <Card size="small" bodyStyle={{ padding: 0 }}
+            style={{ flex: 1, display: 'flex', flexDirection: 'column' }}
+            title={<span style={{ fontSize: 12, color: '#1677ff' }}>{orgName} 需优化井列表（共 {tableData.length} 口）</span>}
+          >
+            <Table<WellRow>
+              className="opt-main-table"
+              columns={mainColumns}
+              dataSource={tableData}
+              rowKey="key"
+              size="small"
+              pagination={false}
+              scroll={{ x: 1800, y: tableScrollY }}
+              onRow={(record) => ({
+                onClick: () => handleSelectWell(record.key),
+                style: { cursor: 'pointer', background: record.key === selectedWellId ? '#e6f4ff' : undefined },
+              })}
+            />
           </Card>
-        </Col>
-        <Col xs={24} md={12}>
-          <Card title="节能分析 — 优化前后能耗对比" className="chart-card">
-            <ReactECharts option={energyOption} style={{ height: 350 }} />
-          </Card>
-        </Col>
-      </Row>
+        </div>
+      </div>
+
+      <style>{`
+        .opt-main-table .ant-table-thead > tr > th {
+          background: #e6f4ff !important;
+          color: #1677ff;
+          font-weight: 600;
+          font-size: 12px;
+          white-space: nowrap;
+        }
+        .opt-main-table .ant-table-tbody > tr > td {
+          font-size: 12px;
+        }
+        .opt-main-table .ant-table-tbody > tr:hover > td {
+          background: #f0f7ff !important;
+        }
+        .opt-main-table .ant-table-cell-fix-left,
+        .opt-main-table .ant-table-cell-fix-right {
+          z-index: 1;
+        }
+        .opt-main-table .ant-table-thead .ant-table-cell-fix-left,
+        .opt-main-table .ant-table-thead .ant-table-cell-fix-right {
+          z-index: 3;
+        }
+      `}</style>
     </div>
   )
 }

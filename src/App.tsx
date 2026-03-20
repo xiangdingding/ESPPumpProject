@@ -38,6 +38,7 @@ import NineZoneEvaluation from './pages/NineZoneEvaluation'
 import IndustryStandard from './pages/IndustryStandard'
 import EvaluationResult from './pages/EvaluationResult'
 import RunOptimization from './pages/RunOptimization'
+import ProductionOptimization from './pages/ProductionOptimization'
 import OptimizationSchemeManager from './pages/OptimizationSchemeManager'
 import OptimizationEffect from './pages/OptimizationEffect'
 import NewWellDesign from './pages/NewWellDesign'
@@ -84,7 +85,8 @@ const menuItems: MenuProps['items'] = [
     icon: <RocketOutlined />,
     label: '运行优化',
     children: [
-      { key: '/run-optimization', icon: <SettingOutlined />, label: '优化分析建议' },
+      { key: '/run-optimization', icon: <SettingOutlined />, label: '优化选井方案' },
+      { key: '/production-optimization', icon: <ThunderboltOutlined />, label: '生产协调优化' },
       { key: '/optimization-schemes', icon: <SolutionOutlined />, label: '优化方案管理' },
       { key: '/optimization-effect', icon: <FundOutlined />, label: '优化效果跟踪' },
     ],
@@ -144,7 +146,7 @@ const App: React.FC = () => {
     const path = location.pathname
     if (['/realtime-diagnosis', '/comprehensive-diagnosis', '/current-signal'].includes(path)) return ['diagnosis']
     if (['/work-condition-library'].includes(path)) return ['data-manage']
-    if (['/run-optimization', '/optimization-schemes', '/optimization-effect'].includes(path)) return ['optimization']
+    if (['/run-optimization', '/production-optimization', '/optimization-schemes', '/optimization-effect'].includes(path)) return ['optimization']
     if (['/new-well-design', '/pump-selection', '/design-schemes'].includes(path)) return ['design']
     if (['/big-data', '/nine-zone', '/industry-standard', '/evaluation-result'].includes(path)) return ['dynamic-eval']
     return []
@@ -304,6 +306,7 @@ const App: React.FC = () => {
               <Route path="/work-condition-library" element={<WorkConditionLibrary />} />
               {/* 运行优化 */}
               <Route path="/run-optimization" element={<RunOptimization />} />
+              <Route path="/production-optimization" element={<ProductionOptimization />} />
               <Route path="/optimization-schemes" element={<OptimizationSchemeManager />} />
               <Route path="/optimization-effect" element={<OptimizationEffect />} />
               {/* 新井设计 */}

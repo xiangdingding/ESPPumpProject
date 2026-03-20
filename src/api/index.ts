@@ -83,3 +83,31 @@ export async function fetchTableSchema(tableName: string) {
   }
   return schemas[tableName] || []
 }
+
+export interface PumpCurvePoint {
+  id: number
+  Well_Id: string
+  Curve_30_HZ_X: number; Curve_30_HZ_Y: number
+  Curve_35_HZ_X: number; Curve_35_HZ_Y: number
+  Curve_40_HZ_X: number; Curve_40_HZ_Y: number
+  Curve_45_HZ_X: number; Curve_45_HZ_Y: number
+  Curve_50_HZ_X: number; Curve_50_HZ_Y: number
+  Curve_55_HZ_X: number; Curve_55_HZ_Y: number
+  Curve_60_HZ_X: number; Curve_60_HZ_Y: number
+  Curve_65_HZ_X: number; Curve_65_HZ_Y: number
+  Curve_70_HZ_X: number; Curve_70_HZ_Y: number
+  Curve_Minimum_X: number; Curve_Minimum_Y: number
+  Curve_Optimum_X: number; Curve_Optimum_Y: number
+  Curve_Maximum_X: number; Curve_Maximum_Y: number
+  Update_Time: string
+}
+
+export async function fetchPumpCurve(wellId: string): Promise<PumpCurvePoint[]> {
+  try {
+    const res = await fetch(`/api/rpt_correct_character_curve/${encodeURIComponent(wellId)}`)
+    const json = await res.json()
+    if (json.success && json.data?.length > 0) return json.data
+  } catch { /* fall through to mock */ }
+  const { generatePumpCurve } = await import('../mock/pumpCurveMock')
+  return generatePumpCurve(wellId)
+}

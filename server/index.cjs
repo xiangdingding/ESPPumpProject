@@ -139,6 +139,30 @@ app.get('/api/syn_fault_type_chart', async (req, res) => {
   }
 })
 
+// 获取电泵特性曲线（按井ID）
+app.get('/api/rpt_correct_character_curve/:wellId', async (req, res) => {
+  try {
+    const { wellId } = req.params
+    const data = await query(
+      'SELECT * FROM Rpt_Correct_Character_Curve WHERE Well_Id = ? ORDER BY id',
+      [wellId]
+    )
+    res.json({ success: true, data })
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message })
+  }
+})
+
+// 获取电泵特性曲线（全部）
+app.get('/api/rpt_correct_character_curve', async (req, res) => {
+  try {
+    const data = await getTableData('Rpt_Correct_Character_Curve')
+    res.json({ success: true, data })
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message })
+  }
+})
+
 // 获取表结构
 app.get('/api/schema/:tableName', async (req, res) => {
   try {
